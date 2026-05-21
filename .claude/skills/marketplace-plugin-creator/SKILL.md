@@ -30,8 +30,9 @@ npm run marketplace:add -- <skill-name>
 Optional flags:
 
 - `--category=<cat>` — required only when the skill name exists in more than one category (the script will tell you).
-- `--plugin=<name>` — override the default plugin name (`agent-skills-<category>`).
+- `--plugin=<name>` — override the default plugin name (`<category>`). Use this for a standalone plugin where `<name>` is the skill name itself.
 - `--description="..."` — override the auto-generated plugin description (only meaningful when the plugin is being created for the first time).
+- `--bundle` — explicitly opt into bundling into the category plugin when the script's standalone-candidate detector fires (see below).
 
 ### B. Add every skill in a category at once
 
@@ -43,11 +44,25 @@ npm run marketplace:add-category -- <category>
 
 The category arg is the inner name without parens — `architecture`, not `(architecture)`. The script lists available categories if you pass an unknown one.
 
+## Standalone-candidate detection (exit code 2)
+
+When the user invokes `npm run marketplace:add -- <skill>` *without* `--plugin=` or `--bundle`, the script first checks whether the skill looks like a standalone candidate (heavy payload, very long SKILL.md, or vendor/methodology name prefix). If it fires, the script **halts with exit code 2** and prints two re-run options.
+
+When you see exit code 2:
+
+1. Read the listed signals back to the user (don't just say "the script flagged it" — quote the specifics, e.g. *"16 non-SKILL.md files (threshold: 10)"*).
+2. Ask which path they want: a standalone plugin (recommended for flagships) or bundling into the category plugin.
+3. Re-run the script with the chosen flag — either `--plugin=<skill-name>` for standalone, or `--bundle` to confirm category bundling.
+
+Never silently pick. The whole point of the heuristic is to surface the architectural decision; the user makes the call.
+
+For `marketplace:add-category` (bulk mode), the script does NOT halt — bulk-add wants the entire category. Instead, it prints a footer listing flagged skills. Surface that footer to the user as a follow-up: *"Heads up, the script flagged X and Y as standalone candidates — want me to extract those into their own plugins after this completes?"*
+
 ## What the scripts do (so you can explain it if asked)
 
 1. Locate the canonical skill source at `packages/skills-catalog/skills/(<category>)/<skill-name>/`.
-2. Create `plugins/agent-skills-<category>/.claude-plugin/plugin.json` if it doesn't exist yet (idempotent).
-3. Create a symlink at `plugins/agent-skills-<category>/skills/<skill-name>` pointing at the canonical source. Claude Code dereferences in-marketplace symlinks at install time, so no file duplication.
+2. Create `plugins/<plugin-name>/.claude-plugin/plugin.json` if it doesn't exist yet (idempotent). Default plugin name is the bare category name (e.g. `architecture`); override with `--plugin=` for standalone plugins (e.g. `--plugin=tlc-spec-driven`).
+3. Create a symlink at `plugins/<plugin-name>/skills/<skill-name>` pointing at the canonical source. Claude Code dereferences in-marketplace symlinks at install time, so no file duplication.
 4. Add a plugin entry to `.claude-plugin/marketplace.json` if not already present.
 
 Re-running with the same arguments is a no-op and reports "Nothing to do — already wired up." Safe to chain.
@@ -56,12 +71,12 @@ Re-running with the same arguments is a no-op and reports "Nothing to do — alr
 
 Tell the user:
 
-1. **Review the diff.** `git status` should show changes only under `.claude-plugin/marketplace.json`, `plugins/agent-skills-<category>/`, and the new symlink.
+1. **Review the diff.** `git status` should show changes only under `.claude-plugin/marketplace.json`, `plugins/<plugin-name>/`, and the new symlink.
 2. **Commit and push.** Repo enforces signed commits; signing is already configured locally if a previous PR worked.
 3. **Install locally to validate:**
    ```
    /plugin marketplace update
-   /plugin install agent-skills-<category>@ckl-agent-skills
+   /plugin install <plugin-name>@ckl-agent-skills
    ```
 4. **Confirm in a session.** Ask Claude something that should trigger one of the newly-exposed skills; verify it loads via the Skill tool.
 

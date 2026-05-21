@@ -1,17 +1,23 @@
 #!/usr/bin/env tsx
 
+import { join } from 'node:path'
+
 import {
+  categoryFolderName,
   defaultDescriptionForPlugin,
   ensureMarketplaceEntry,
   ensurePluginManifest,
   ensureSkillSymlink,
+  evaluateStandaloneCandidacy,
   listCategories,
   listSkillsInCategory,
   MarketplaceError,
   pluginNameForCategory,
   readMarketplace,
-  writeMarketplace,
+  SKILLS_DIR,
   type SkillLocation,
+  type StandaloneSignal,
+  writeMarketplace,
 } from './_lib/marketplace'
 
 interface ParsedArgs {
@@ -80,24 +86,25 @@ function main(): void {
   const pluginResult = ensurePluginManifest(pluginName, pluginDescription, ownerName)
   console.log(`  plugin.json: ${pluginResult.created ? 'created' : 'exists'}`)
 
+  const locations: SkillLocation[] = skillNames.map((skillName) => ({
+    category: args.category,
+    skillName,
+    absPath: join(SKILLS_DIR, categoryFolderName(args.category), skillName),
+  }))
+
   let createdCount = 0
   let alreadyCount = 0
-  for (const skillName of skillNames) {
-    const location: SkillLocation = {
-      category: args.category,
-      skillName,
-      absPath: '',
-    }
+  for (const location of locations) {
     const result = ensureSkillSymlink(pluginName, location)
     if (result.status === 'wrong-target') {
       throw new MarketplaceError(
-        `plugins/${pluginName}/skills/${skillName} exists but points at '${result.currentTarget}', ` +
+        `plugins/${pluginName}/skills/${location.skillName} exists but points at '${result.currentTarget}', ` +
           `expected '${result.expectedTarget}'. Refusing to clobber.`,
       )
     }
     if (result.status === 'created') {
       createdCount++
-      console.log(`  symlink:     created ${skillName}`)
+      console.log(`  symlink:     created ${location.skillName}`)
     } else {
       alreadyCount++
     }
@@ -123,6 +130,23 @@ function main(): void {
   } else {
     console.log('')
     console.log(`Nothing to do — already wired up.`)
+  }
+
+  const flagged = locations
+    .map((location) => ({
+      skillName: location.skillName,
+      candidacy: evaluateStandaloneCandidacy(location),
+    }))
+    .filter((entry) => entry.candidacy.isCandidate)
+
+  if (flagged.length > 0) {
+    console.log('')
+    console.log(`ℹ️  Standalone candidates flagged in this category:`)
+    for (const entry of flagged) {
+      const types = entry.candidacy.signals.map((s: StandaloneSignal) => s.type).join(', ')
+      console.log(`   - ${entry.skillName} (${types})`)
+    }
+    console.log(`   Consider extracting these later with --plugin=<skill-name>.`)
   }
 }
 

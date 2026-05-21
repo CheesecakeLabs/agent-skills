@@ -5,6 +5,7 @@ import {
   ensureMarketplaceEntry,
   ensurePluginManifest,
   ensureSkillSymlink,
+  evaluateStandaloneCandidacy,
   findSkill,
   listCategories,
   listSkillsInCategory,
@@ -14,11 +15,14 @@ import {
   writeMarketplace,
 } from './_lib/marketplace'
 
+const BOOLEAN_FLAGS = new Set(['bundle'])
+
 interface ParsedArgs {
   skillName: string
   category?: string
   pluginName?: string
   description?: string
+  bundle: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -29,6 +33,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (arg.startsWith('--')) {
       const eq = arg.indexOf('=')
       if (eq === -1) {
+        const key = arg.slice(2)
+        if (BOOLEAN_FLAGS.has(key)) {
+          flags[key] = 'true'
+          continue
+        }
         throw new MarketplaceError(`Flag '${arg}' must be in --key=value form.`)
       }
       const key = arg.slice(2, eq)
@@ -41,7 +50,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   if (positional.length === 0) {
     throw new MarketplaceError(
-      'Usage: tsx scripts/marketplace-add-skill.ts <skill-name> [--category=<cat>] [--plugin=<plugin-name>] [--description="..."]',
+      'Usage: tsx scripts/marketplace-add-skill.ts <skill-name> [--category=<cat>] [--plugin=<plugin-name>] [--description="..."] [--bundle]',
     )
   }
   if (positional.length > 1) {
@@ -53,6 +62,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     category: flags.category,
     pluginName: flags.plugin,
     description: flags.description,
+    bundle: flags.bundle === 'true',
   }
 }
 
@@ -81,6 +91,29 @@ function main(): void {
   }
 
   const location = matches[0]
+
+  const usingDefaultPlugin = !args.pluginName
+  if (usingDefaultPlugin && !args.bundle) {
+    const candidacy = evaluateStandaloneCandidacy(location)
+    if (candidacy.isCandidate) {
+      console.log(`→ Skill: ${args.skillName} (in (${location.category}))`)
+      console.log('')
+      console.log(`⚠️  Standalone candidate detected.`)
+      for (const signal of candidacy.signals) {
+        console.log(`   - ${signal.detail}`)
+      }
+      console.log('')
+      console.log(`Choose one and re-run:`)
+      console.log(`  Standalone plugin (recommended for flagships):`)
+      console.log(`    npm run marketplace:add -- ${args.skillName} --plugin=${candidacy.suggestedPluginName}`)
+      console.log(`  Bundle into category plugin '${pluginNameForCategory(location.category)}':`)
+      console.log(`    npm run marketplace:add -- ${args.skillName} --bundle`)
+      console.log('')
+      console.log(`(No action taken — re-run with one of the above.)`)
+      process.exit(2)
+    }
+  }
+
   const pluginName = args.pluginName ?? pluginNameForCategory(location.category)
 
   const pluginDescription =

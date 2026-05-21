@@ -2,7 +2,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlink
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { CATEGORY_FOLDER_PATTERN, SKILL_NAME_SLUG_PATTERN } from '../../packages/skills-catalog/src/utils'
+import {
+  CATEGORY_FOLDER_PATTERN,
+  getFilesInDirectory,
+  SKILL_NAME_SLUG_PATTERN,
+} from '../../packages/skills-catalog/src/utils'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -191,4 +195,85 @@ export function ensureSkillSymlink(pluginName: string, location: SkillLocation):
 export function defaultDescriptionForPlugin(category: string, skillCount: number): string {
   const noun = skillCount === 1 ? 'skill' : 'skills'
   return `${category} ${noun} from the CKL agent-skills catalog.`
+}
+
+export const STANDALONE_VENDOR_PREFIXES = [
+  'tlc',
+  'ckl',
+  'aws',
+  'cloudflare',
+  'vercel',
+  'netlify',
+  'render',
+  'shopify',
+] as const
+
+export const STANDALONE_THRESHOLDS = {
+  payloadFiles: 10,
+  skillMdLines: 500,
+} as const
+
+export type StandaloneSignalType = 'heavy-payload' | 'heavy-skill-md' | 'vendor-prefix'
+
+export interface StandaloneSignal {
+  type: StandaloneSignalType
+  detail: string
+}
+
+export interface StandaloneCandidacy {
+  isCandidate: boolean
+  signals: StandaloneSignal[]
+  suggestedPluginName: string
+}
+
+function countPayloadFiles(skillDir: string): number {
+  if (!existsSync(skillDir)) return 0
+  return getFilesInDirectory(skillDir).filter((f) => f !== 'SKILL.md').length
+}
+
+function countSkillMdLines(skillDir: string): number {
+  const skillMdPath = join(skillDir, 'SKILL.md')
+  if (!existsSync(skillMdPath)) return 0
+  return readFileSync(skillMdPath, 'utf-8').split('\n').length
+}
+
+function matchedVendorPrefix(skillName: string): string | null {
+  for (const prefix of STANDALONE_VENDOR_PREFIXES) {
+    if (skillName.startsWith(`${prefix}-`)) return prefix
+  }
+  return null
+}
+
+export function evaluateStandaloneCandidacy(location: SkillLocation): StandaloneCandidacy {
+  const signals: StandaloneSignal[] = []
+
+  const payloadFiles = countPayloadFiles(location.absPath)
+  if (payloadFiles >= STANDALONE_THRESHOLDS.payloadFiles) {
+    signals.push({
+      type: 'heavy-payload',
+      detail: `${payloadFiles} non-SKILL.md files (threshold: ${STANDALONE_THRESHOLDS.payloadFiles})`,
+    })
+  }
+
+  const skillMdLines = countSkillMdLines(location.absPath)
+  if (skillMdLines >= STANDALONE_THRESHOLDS.skillMdLines) {
+    signals.push({
+      type: 'heavy-skill-md',
+      detail: `SKILL.md is ${skillMdLines} lines (threshold: ${STANDALONE_THRESHOLDS.skillMdLines})`,
+    })
+  }
+
+  const prefix = matchedVendorPrefix(location.skillName)
+  if (prefix) {
+    signals.push({
+      type: 'vendor-prefix',
+      detail: `name starts with '${prefix}-' (vendor/methodology prefix)`,
+    })
+  }
+
+  return {
+    isCandidate: signals.length > 0,
+    signals,
+    suggestedPluginName: location.skillName,
+  }
 }
