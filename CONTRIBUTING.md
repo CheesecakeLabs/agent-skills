@@ -56,6 +56,27 @@ The generator creates:
 
 After generating the scaffold, refine the `SKILL.md` content (especially the `description` field) following the quality standards below.
 
+## 🧩 Adding a Skill to the CKL Marketplace
+
+> **CKL fork only.** Upstream `tech-leads-club/agent-skills` does not have these scripts. They expose an existing canonical skill as a Claude Code plugin via `.claude-plugin/marketplace.json` + `plugins/agent-skills-<category>/`. Skill content stays canonical; the plugin is a thin symlink wrapper.
+
+```bash
+# Expose one skill (defaults plugin to `agent-skills-<category>`)
+npm run marketplace:add -- <skill-name>
+
+# Expose every skill in a category at once
+npm run marketplace:add-category -- <category>
+```
+
+The scripts are idempotent — re-running is a safe no-op. If a skill name exists in multiple categories, re-run with `--category=<cat>` to disambiguate. When a Claude Code session is open in this repo, the `marketplace-plugin-creator` skill in `.claude/skills/` auto-loads and runs the right command from natural-language asks like *"add docs-writer to our marketplace"*.
+
+After running, validate with:
+
+```bash
+/plugin marketplace update
+/plugin install agent-skills-<category>@ckl-agent-skills
+```
+
 ## 📁 Project Structure
 
 ```

@@ -19,6 +19,16 @@
       "name": "agent-skills-creation",
       "source": "./plugins/agent-skills-creation",
       "description": "Authoring helpers. Pilot: skill-architect."
+    },
+    {
+      "name": "agent-skills-architecture",
+      "source": "./plugins/agent-skills-architecture",
+      "description": "architecture skills from the CKL agent-skills catalog."
+    },
+    {
+      "name": "agent-skills-performance",
+      "source": "./plugins/agent-skills-performance",
+      "description": "performance skills from the CKL agent-skills catalog."
     }
   ]
 }
