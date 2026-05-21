@@ -58,24 +58,63 @@ After generating the scaffold, refine the `SKILL.md` content (especially the `de
 
 ## 🧩 Adding a Skill to the CKL Marketplace
 
-> **CKL fork only.** Upstream `tech-leads-club/agent-skills` does not have these scripts. They expose an existing canonical skill as a Claude Code plugin via `.claude-plugin/marketplace.json` + `plugins/agent-skills-<category>/`. Skill content stays canonical; the plugin is a thin symlink wrapper.
+> **CKL fork only.** Exposes any skill in `packages/skills-catalog/skills/(<category>)/<skill-name>/` as a Claude marketplace plugin so teammates can run `/plugin install <plugin>@ckl-agent-skills`. Works the same way for upstream skills AND net-new CKL-authored skills.
+
+### Recommended: ask Claude (works inside this repo)
+
+Open a Claude Code session in this repo and say something like *"add the docs-writer skill to the marketplace"* or *"expose tlc-spec-driven via our marketplace"*. The project-scoped `marketplace-plugin-creator` skill at `.claude/skills/` auto-loads when you're in this working tree and:
+
+1. Runs the right npm script with the right arguments
+2. Surfaces the standalone-candidate advisory (if the skill is heavy-payload or vendor-prefixed) so you choose the plugin shape — bundled in its category, or standalone
+3. Reports back what changed
+
+You never need to remember the CLI surface. This is the path for non-expert teammates and for anyone working through Claude.
+
+### Explicit: run the scripts directly
+
+For scripting, automation, or expert use:
 
 ```bash
-# Expose one skill (defaults plugin to `agent-skills-<category>`)
+# Add one skill (defaults plugin name to <category>)
 npm run marketplace:add -- <skill-name>
 
-# Expose every skill in a category at once
+# Add an entire category in one shot
 npm run marketplace:add-category -- <category>
+
+# Force a standalone plugin (skips candidacy detection)
+npm run marketplace:add -- <skill-name> --plugin=<plugin-name>
+
+# Bundle into the category plugin even if the script would flag the skill as a standalone candidate
+npm run marketplace:add -- <skill-name> --bundle
 ```
 
-The scripts are idempotent — re-running is a safe no-op. If a skill name exists in multiple categories, re-run with `--category=<cat>` to disambiguate. When a Claude Code session is open in this repo, the `marketplace-plugin-creator` skill in `.claude/skills/` auto-loads and runs the right command from natural-language asks like *"add docs-writer to our marketplace"*.
+Idempotent — re-running with the same arguments is a safe no-op. If a skill name exists in multiple categories, re-run with `--category=<cat>` to disambiguate.
 
-After running, validate with:
+### Standalone-candidate detection (exit code 2)
+
+When `marketplace:add` is invoked without `--plugin=` or `--bundle`, the script checks whether the skill looks like a flagship that warrants its own plugin (heavy reference payload, ≥500-line SKILL.md, or vendor/methodology naming prefix like `tlc-`, `ckl-`, `aws-`). If so, the script **halts with exit code 2** and prints the signals plus two re-run commands. No state changes — you pick standalone or bundle and re-run.
+
+Examples that fire: `tlc-spec-driven` (16 refs + `tlc-` prefix), `cloudflare-deploy` (307 refs), `create-technical-design-doc` (1485 LOC).
+Examples that don't fire: `skill-architect`, `tactical-ddd`, `docs-writer` (lightweight, no vendor prefix).
+
+The Claude-driven flow (above) handles exit 2 automatically — it surfaces the signals and asks you which path you want.
+
+### Net-new CKL skills
+
+If you're authoring a brand-new skill that isn't from upstream:
+
+1. **Scaffold the skill** using the Nx generator (`nx g @tech-leads-club/skill-plugin:skill ...`) — see [Creating a New Skill](#-creating-a-new-skill) above. For CKL-specific skills, use `--category=ckl-internal`; otherwise pick whichever existing category fits.
+2. **Write the SKILL.md content** with `skill-architect`'s guidance.
+3. **Expose it via the marketplace** with the same `marketplace:add` workflow (or the Claude-driven ask) — the script doesn't care where the skill came from.
+
+### Validate the install
 
 ```bash
 /plugin marketplace update
-/plugin install agent-skills-<category>@ckl-agent-skills
+/plugin install <plugin-name>@ckl-agent-skills
 ```
+
+Then in a fresh Claude Code session, ask something that should trigger the skill and confirm it loads via the Skill tool.
 
 ## 📁 Project Structure
 
