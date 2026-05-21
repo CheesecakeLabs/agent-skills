@@ -101,11 +101,27 @@ The Claude-driven flow (above) handles exit 2 automatically — it surfaces the 
 
 ### Net-new CKL skills
 
-If you're authoring a brand-new skill that isn't from upstream:
+If you're authoring a brand-new skill that isn't from upstream, **let Claude do the work** — there's no separate template-scaffolding step:
 
-1. **Scaffold the skill** using the Nx generator (`nx g @tech-leads-club/skill-plugin:skill ...`) — see [Creating a New Skill](#-creating-a-new-skill) above. For CKL-specific skills, use `--category=ckl-internal`; otherwise pick whichever existing category fits.
-2. **Write the SKILL.md content** with `skill-architect`'s guidance.
-3. **Expose it via the marketplace** with the same `marketplace:add` workflow (or the Claude-driven ask) — the script doesn't care where the skill came from.
+1. **Ask Claude in this repo:** _"help me create a new skill for X"_ or _"I want to add a skill that does Y"_. The `skill-architect` skill (canonical, at `packages/skills-catalog/skills/(creation)/skill-architect/`) walks you through Discovery → Architecture → Craft → Validate → Deliver and **writes the SKILL.md directly to disk** at the right path when you're done. For CKL-only skills, drop them under `(ckl-internal)/`; otherwise pick the category that fits.
+2. **Ask Claude again:** _"add the new skill to our marketplace"_. The `marketplace-plugin-creator` skill runs `marketplace:add`, surfaces the standalone-candidate advisory if it fires, and reports back.
+
+That's the whole flow. Two natural-language asks, no commands to memorize.
+
+<details>
+<summary><strong>Alternative: Nx generator (shell-only, template-first scaffolding)</strong></summary>
+
+If you want a deliberate placeholder file you'll edit by hand — no Claude session, no guided authoring — the Nx generator creates the directory and a starter SKILL.md:
+
+```bash
+nx g @tech-leads-club/skill-plugin:skill my-skill --category=ckl-internal
+```
+
+Then write the SKILL.md content yourself, then run `marketplace:add` to expose it.
+
+The Nx generator is upstream's tooling — keep using it if you really prefer template-first authoring. For CKL contributors, `skill-architect` is the recommended path because it produces higher-quality skills with less manual work and zero risk of leaving a half-filled template in the catalog.
+
+</details>
 
 ### Validate the install
 
