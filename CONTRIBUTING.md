@@ -62,7 +62,7 @@ After generating the scaffold, refine the `SKILL.md` content (especially the `de
 
 ### Recommended: ask Claude (works inside this repo)
 
-Open a Claude Code session in this repo and say something like *"add the docs-writer skill to the marketplace"* or *"expose tlc-spec-driven via our marketplace"*. The project-scoped `marketplace-plugin-creator` skill at `.claude/skills/` auto-loads when you're in this working tree and:
+Open a Claude Code session in this repo and say something like _"add the docs-writer skill to the marketplace"_ or _"expose tlc-spec-driven via our marketplace"_. The project-scoped `marketplace-plugin-creator` skill at `.claude/skills/` auto-loads when you're in this working tree and:
 
 1. Runs the right npm script with the right arguments
 2. Surfaces the standalone-candidate advisory (if the skill is heavy-payload or vendor-prefixed) so you choose the plugin shape — bundled in its category, or standalone
