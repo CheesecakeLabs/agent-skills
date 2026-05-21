@@ -1,3 +1,39 @@
+<!--
+  CKL-FORK: keep the banner below and the [!NOTE] callouts on the
+  Supported Agents / Quick Start / How It Works / MCP Server sections
+  when merging upstream README changes. They tell CKL employees not
+  to follow the upstream CLI install path.
+-->
+
+## 🧀 Cheesecake Labs Fork (Start Here)
+
+> [!IMPORTANT]
+> This is the **Cheesecake Labs internal fork** of
+> [`tech-leads-club/agent-skills`](https://github.com/tech-leads-club/agent-skills).
+> Install through Claude Code or Cowork using our private marketplace —
+> **not** through the upstream CLI or npm.
+>
+> **One-time setup, per machine:**
+>
+> ```
+> /plugin marketplace add CheesecakeLabs/agent-skills
+> ```
+>
+> **Install plugins (pilot scope — more coming as we validate each):**
+>
+> ```
+> /plugin install creation@ckl-agent-skills
+> /plugin install tlc-spec-driven@ckl-agent-skills
+> ```
+>
+> The same flow works from **Claude Cowork** for non-developer teammates — your org-level marketplace setting already covers it (same setup as `ckl-ai-skills`).
+>
+> Adding a new skill to the marketplace? See [CONTRIBUTING.md](CONTRIBUTING.md) → "Adding a Skill to the CKL Marketplace".
+>
+> ---
+>
+> _The original upstream README is preserved below for reference. Sections that document the upstream CLI install path are marked with `[!NOTE]` callouts — those don't apply to CKL employees._
+
 <p align="center">
   <img src=".github/assets/logo.png" alt="Tech Leads Club" width="400" />
 </p>
@@ -42,6 +78,7 @@
 
 ## 📖 Table of Contents
 
+- [🧀 Cheesecake Labs Fork (Start Here)](#-cheesecake-labs-fork-start-here)
 - [✨ What are Skills?](#-what-are-skills)
 - [🛡️ Security & Trust](#️-security--trust)
 - [🤖 Supported Agents](#-supported-agents)
@@ -73,6 +110,9 @@ Your environment's safety is our top priority. Unlike open marketplaces where **
 → **Full threat model, implementation details, and vulnerability reporting:** [SECURITY.md](SECURITY.md)
 
 ## 🤖 Supported Agents
+
+> [!NOTE]
+> **CKL employees:** the multi-agent install paths below don't apply to us — we install via the Claude marketplace (see the banner at the top of this README). This section documents the agents supported by the upstream CLI installer.
 
 Install skills to any of these AI coding agents:
 
@@ -113,6 +153,13 @@ A glimpse of what's available in our growing catalog:
 </p>
 
 ## 🚀 Quick Start
+
+> [!NOTE]
+> **CKL employees:** ignore this section. Install via the Claude marketplace — see the banner at the top of this README.
+> This section documents the upstream CLI install path for users of `tech-leads-club/agent-skills`. It is collapsed by default so you don't accidentally follow it.
+
+<details>
+<summary><strong>Upstream CLI usage (kept for reference)</strong></summary>
 
 ### Install Skills in Your Project
 
@@ -207,7 +254,12 @@ npm install -g @tech-leads-club/agent-skills
 agent-skills  # Use 'agent-skills' instead of 'npx @tech-leads-club/agent-skills'
 ```
 
+</details>
+
 ## ⚡ How It Works
+
+> [!NOTE]
+> **CKL employees:** this describes the upstream CLI's cache/CDN flow. CKL employees install via the Claude marketplace, which has its own plugin cache mechanism (`~/.claude/plugins/cache/`) managed by Claude Code itself.
 
 The CLI fetches skills **on-demand** from our CDN:
 
@@ -226,6 +278,9 @@ rm -rf ~/.cache/agent-skills
 ```
 
 ## 🔌 MCP Server
+
+> [!NOTE]
+> **CKL employees:** ignore this section. You install skills as Claude plugins via the marketplace (banner at top), not via an MCP server. This section documents the upstream MCP server for users of `tech-leads-club/agent-skills`.
 
 `@tech-leads-club/agent-skills-mcp` is an MCP server that exposes the skills catalog directly to AI agents via **progressive disclosure** — search first, then fetch only what's needed.
 
