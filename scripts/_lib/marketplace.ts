@@ -57,7 +57,7 @@ export function categoryFolderName(category: string): string {
 }
 
 export function pluginNameForCategory(category: string): string {
-  return `agent-skills-${category}`
+  return category
 }
 
 export function pluginDirFor(pluginName: string): string {
