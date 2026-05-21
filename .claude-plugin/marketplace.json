@@ -1,19 +1,24 @@
 {
-  "name": "tech-leads-club",
-  "owner": { "name": "Tech Leads Club" },
-  "metadata": { "description": "Official Tech Leads Club plugins for Claude Code" },
+  "name": "agent-skills",
+  "owner": {
+    "name": "Cheesecake Labs",
+    "email": "engineering@cheesecakelabs.com"
+  },
+  "metadata": {
+    "description": "CKL fork of tech-leads-club/agent-skills, organized as Claude-native plugins. Pilot scope: 2 plugins.",
+    "version": "0.0.1",
+    "pluginRoot": "./plugins"
+  },
   "plugins": [
     {
-      "name": "agent-skills-mcp",
-      "source": "./packages/mcp",
-      "description": "The official MCP for agent-skills. Curated catalog, progressive disclosure flow: Search → load canonical SKILL.md → fetch only validated references. Safe, lean, zero config.",
-      "version": "0.0.1",
-      "author": { "name": "Tech Leads Club" },
-      "homepage": "https://github.com/tech-leads-club/agent-skills",
-      "repository": "https://github.com/tech-leads-club/agent-skills",
-      "license": "MIT",
-      "keywords": ["mcp", "skills", "agents", "catalog"],
-      "category": "productivity"
+      "name": "agent-skills-development",
+      "source": "./plugins/agent-skills-development",
+      "description": "Engineering workflows. Pilot: tlc-spec-driven."
+    },
+    {
+      "name": "agent-skills-creation",
+      "source": "./plugins/agent-skills-creation",
+      "description": "Authoring helpers. Pilot: skill-architect."
     }
   ]
 }
