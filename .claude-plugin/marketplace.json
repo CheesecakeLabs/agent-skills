@@ -24,6 +24,11 @@
       "name": "performance",
       "source": "./plugins/performance",
       "description": "performance skills from the CKL agent-skills catalog."
+    },
+    {
+      "name": "tlc-spec-driven",
+      "source": "./plugins/tlc-spec-driven",
+      "description": "TLC's 4-phase spec-driven development methodology: spec → design → tasks → execute, with atomic commits and adaptive depth. Standalone plugin for cross-functional adoption."
     }
   ]
 }
