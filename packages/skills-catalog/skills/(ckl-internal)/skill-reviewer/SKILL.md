@@ -34,7 +34,7 @@ metadata:
 
 # Skill Reviewer
 
-Repo-agnostic code review skill for Claude Code skills/plugins. Reviews skills against three sources of truth: (1) the Anthropic Skills spec encoded in `skill-architect`'s references, (2) CKL conventions documented in `references/ckl-skill-conventions.md`, and (3) `references/ckl-recurring-issues.md` (knowledge base that grows over time).
+Repo-agnostic code review skill for Claude Code skills/plugins. Reviews skills against three sources of truth: (1) the Anthropic Skills spec encoded in `skill-architect`'s references, (2) CKL conventions documented in `references/conventions.md`, and (3) `references/ckl-recurring-issues.md` (knowledge base that grows over time).
 
 This skill is the **maintainer's review buddy** — it handles the mechanical and security-adjacent checks so the human reviewer can focus on business logic, scope decisions, and trade-offs. It works in any directory that contains skill files (`SKILL.md`), regardless of which CKL repo or external project they live in.
 
@@ -54,7 +54,7 @@ Each reference is small and load-pointed; the table below tells you exactly when
 
 | File | Load when |
 |---|---|
-| `references/ckl-skill-conventions.md` | Step 3 — reviewing description, frontmatter, naming |
+| `references/conventions.md` | Step 3 — reviewing description, frontmatter, naming |
 | `references/rules.md` | Step 3 — applying the judgment checklist (merged from former judgment-checks + rule-explanations) |
 | `references/gotchas.md` | Step 3 — alongside rules.md, to check the target for known failure modes (universal substrate) |
 | `references/reviewer-gotchas.md` | When debugging `skill-reviewer` itself — design history, orchestration quirks |
