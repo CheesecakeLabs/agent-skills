@@ -253,7 +253,7 @@ def validate_skill(skill_path: str) -> dict:
     add_check("folder_exists", True, "Skill folder exists")
 
     # --- Check 2: Folder name is kebab-case ---
-    folder_name = os.path.basename(os.path.normpath(skill_path))
+    folder_name = os.path.basename(os.path.abspath(skill_path))
     kebab_pattern = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
     is_kebab = bool(kebab_pattern.match(folder_name))
     add_check(
