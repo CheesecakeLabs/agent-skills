@@ -1,6 +1,6 @@
 ---
 name: skill-reviewer
-description: 'Code review e audit de UMA skill por vez, repo-agnóstico e self-contained. Validator e security sweep são bundled (zero dep externa); só gh CLI é opcional. Aceita path local, número de PR, URL de PR, ou branch. Três modos: PR review (true inline via gh api + 1 top-level summary), audit local, review de branch. Sempre roda judgment LLM-driven (description quality, scope overlap, realismo de exemplos, MCP trust boundary, parallel subagent preconditions, convenções CKL e spec Anthropic), por severidade. Use when the user says "revisa essa skill aqui: PATH ou URL", "review esse PR de skill", "code review do skill X", "audita essa skill", "valida essa skill", "sugira melhorias pra essa skill", ou aponta path com SKILL.md, ou URL .../pull/N. Do NOT use for code review de código não-skill — TypeScript, Next.js (use ckl-delivery:pr-review), PRs majoritariamente não-skill, criação (use skill-architect), marketplace (use marketplace-plugin-creator), batch audit, nem PRs sem SKILL.md no diff.'
+description: 'Code-review and audit a single Claude Code skill: bundled validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says "review this skill", "audita essa skill", "review the skill PR", "code review do skill", or points at a path containing SKILL.md or a GitHub /pull/N URL. Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'
 license: CC-BY-4.0
 allowed-tools:
   - Read
@@ -26,6 +26,7 @@ allowed-tools:
   - Bash(git diff:*)
   - Bash(git merge-base:*)
   - Bash(git checkout:*)
+  - Bash(git status:*)
 metadata:
   author: Cheesecake Labs
   version: 1.0.0
@@ -46,6 +47,18 @@ This skill is the **maintainer's review buddy** — it handles the mechanical an
   - `gh` CLI → enables PR fetching and inline comment posting (Modes A and C)
 - The structural validator and security sweep are BUNDLED — they always run, no probe needed.
 - If `gh` is absent, the skill degrades to local-only modes and surfaces what was skipped — never silent.
+
+## References (load on demand — never all upfront)
+
+Each reference is small and load-pointed; the table below tells you exactly when to read each. **Do not pre-load** — the LLM's context budget for a review is finite and Step-specific loading keeps it that way.
+
+| File | Load when |
+|---|---|
+| `references/ckl-skill-conventions.md` | Step 3 — reviewing description, frontmatter, naming |
+| `references/rules.md` | Step 3 — applying the judgment checklist (merged from former judgment-checks + rule-explanations) |
+| `references/gotchas.md` | Step 3 — alongside rules.md, to check the target for known failure modes |
+| `references/ckl-recurring-issues.md` | Step 4 — seeded with R1–R12; append new entries when prompted |
+| `references/output-templates.md` | Step 5 — composing the chat report or PR comment payload |
 
 ## Step 0 — Disambiguation gate (run BEFORE picking a mode)
 
@@ -81,14 +94,7 @@ Before doing anything, do two things: (a) confirm there's actually a skill in th
 
    If `gh` is missing, surface: *"gh CLI unavailable — PR fetching and inline posting disabled. Local-only modes still work."*
 
-3. **Identify the skill path patterns relevant to THIS repo.** Different repos organize skills differently:
-
-   - `packages/skills-catalog/skills/(category)/<name>/` (agent-skills layout)
-   - `plugins/<plugin>/skills/<name>/` (ckl-ai-skills layout)
-   - `skills/<name>/` (single-flat-skills repo)
-   - `<name>/` directly at root (standalone skill repo)
-
-   The `pr_touched_skills.sh` script already supports the first two patterns. For the latter two, fall back to finding any directory containing `SKILL.md` in the changed file list.
+3. **Layout-agnostic skill detection.** No path patterns are assumed. `pr_touched_skills.sh` walks the PR branch's git tree (via `gh api .../git/trees/<branch>?recursive=1`), enumerates every `SKILL.md` it finds, and for each changed file in the PR maps it to the *longest matching* skill root (the dirname of the nearest ancestor `SKILL.md`). Works in agent-skills, ckl-ai-skills, single-skill repos, client repos with arbitrary structure (e.g., `apps/web/skills/<name>/`), and skill-at-root layouts. If the user wants the script to also check out the PR branch locally (so downstream scripts can read files), pass `--checkout` to it; it refuses on dirty trees unless `--force` is also given.
 
 4. **Surface a one-line repo summary at the start of the report** so the user has zero confusion about what was scanned vs not:
 
@@ -112,7 +118,8 @@ Input normalization:
 - If input is a URL like `https://github.com/.../pull/42` → extract the number with `echo "$URL" | grep -oE '/pull/[0-9]+' | grep -oE '[0-9]+'`. Pass the number to the scripts. The `gh` CLI actually accepts the URL directly too — both forms work.
 - If input is just `42` or `#42` or `PR 42` → strip non-digits, pass the number.
 
-1. Run `scripts/pr_touched_skills.sh <PR-ref>` to list skills/plugins changed in the PR (accepts number or URL — passes through to `gh`). The script uses `gh pr diff --name-only` and filters paths matching `packages/skills-catalog/skills/(*)/*/` or `plugins/*/skills/*/`.
+1. Run `scripts/pr_touched_skills.sh <PR-ref>` to list skill roots changed in the PR. The script is layout-agnostic — it walks the PR branch's git tree for every `SKILL.md` and maps each changed file to its nearest ancestor skill root. Accepts a PR number, `#N`, or a full GitHub URL.
+   - **Cross-repo note:** if the URL points at a repo other than your current local clone (e.g., you're in `agent-skills` but the URL is `CheesecakeLabs/ckl-ai-skills/pull/27`), the script auto-detects via the URL form (`-R OWNER/REPO`) and emits a stderr WARN telling you that downstream local reads (`validate`, `security_sweep`) need the PR's files on disk. Two fixes: either `cd` into a local clone of the matching repo, or pass `--checkout` to have the script do `gh pr checkout` for you (refuses on a dirty tree unless you also pass `--force`).
 2. For each touched skill: run validation and judgment checks (see Workflow).
 3. **Compose the report directly in PR-comment-ready format.** The chat report IS the draft — there's no separate "draft" step. Use the inline-comment-style format from `references/output-templates.md` (per-finding includes `path:line`, severity, source attribution, suggested fix). Keep the structured JSON payload **in memory only** — do NOT write it to disk. When the user confirms the PR posting, the agent passes the JSON to `post_pr_review.sh` via stdin in a single bash call (heredoc — see Step 4 of Mode A and the post-script docs). This avoids the `Write` tool prompt entirely.
 4. After showing the report, ask once: *"Post this as a PR review via `gh api`? (N inline comments + 1 top-level summary, event `COMMENT`)"*. Localize the prompt to PT-BR only if the chat is in PT-BR. Only `scripts/post_pr_review.sh` runs after explicit approval. **Invocation pattern — JSON via stdin (no Write tool call):**
@@ -153,139 +160,53 @@ Trigger: user mentions a branch name and says `branch` (e.g., "review skills da 
 - **Posting PR comments without explicit confirmation.** Always require one explicit user confirmation before `gh pr review` runs. The chat report IS the draft — do not add a second "show me the draft" gate.
 - **Modifying the skill being reviewed.** This skill produces findings — it does not edit the target. If the user asks for fixes, they should run `skill-architect` separately after reading the review.
 
-## Subagent dispatch (adaptive — only when complexity warrants)
+## Subagent dispatch (adaptive — keep behavior simple)
 
-This skill MAY dispatch up to 3 subagents in parallel to split the read work across independent surface areas. Default is sequential. Dispatch only when the target's complexity makes sequential review wasteful.
-
-### When to dispatch
-
-Dispatch if ANY of these is true:
-- Target SKILL.md body > 400 lines
-- Target skill has > 8 files total (1 SKILL.md + refs + scripts)
-- Target skill has ≥ 5 non-trivial files under `scripts/` or `references/`
-
-Otherwise: sequential. Small skills don't benefit — dispatch overhead exceeds savings.
-
-### The 3 analyzers — formal dispatch templates
-
-Each analyzer is invoked via the Task/Agent tool with the exact prompt below. Treat these as canonical templates — do not improvise per dispatch. Each is `readonly` (analyzers read; main agent writes the final report) and `model: fast` (checklist application, not creative synthesis).
-
-#### Body analyst (Subagent A)
+Default is **sequential**. Dispatch 3 analyzers in parallel only when the target's complexity makes sequential review wasteful.
 
 ```
-metadata: { readonly: true, model: fast }
-
-You are a Claude skill body analyst. You analyze a single SKILL.md body
-and apply judgment checks J1–J16 from references/judgment-checks.md.
-
-When invoked:
-1. Read the target SKILL.md at the path provided.
-2. Apply J1–J16 (description quality, workflow coherence, scope and
-   composability, progressive disclosure, examples realism, CKL conventions).
-3. Do NOT read scripts/ or references/ — those are handled by peer analyzers.
-
-Return a JSON array of findings:
-[
-  {
-    "severity": "blocker|must-fix|suggest|nit",
-    "rule": "J<N>",
-    "path": "<SKILL.md path>",
-    "line": <int>,
-    "evidence": "<short quote>",
-    "fix": "<concrete suggestion>"
-  }
-]
-
-If you cannot read the file, return {"error": "<reason>"}. Do not improvise findings without evidence.
+Dispatch 3-way?
+├─ Target SKILL.md > 400 lines OR > 8 files total? ─ YES → dispatch
+├─ Target IS this skill itself? ────────────────── NO (recursive J29 muddy)
+├─ User said "sequential" / "sem subagent"? ────── NO
+└─ otherwise ──────────────────────────────────── NO (overhead > savings)
 ```
 
-#### Scripts analyst (Subagent B)
+Dispatched analyzers are `readonly` (main agent writes the final report) and `model: fast` (checklist application, not creative synthesis). Each reads disjoint paths — preconditions for J29 are satisfied by construction.
 
-```
-metadata: { readonly: true, model: fast }
+### The 3 analyzers
 
-You are a Claude skill scripts analyst. You analyze every file under the
-target's scripts/ directory and apply J17–J24 + the bundled security sweep.
+Each is invoked via Task/Agent with the structure: **When invoked → Process → Report**. The Report schema IS the completion contract; if it doesn't parse, the dispatch failed.
 
-When invoked:
-1. List every file in scripts/.
-2. For each, apply J17 (shebang + set -euo pipefail), J18 (args validated),
-   J19 (usage line), J20 (no PWD assumptions), J22–J24 (allowed-tools hygiene
-   if referenced in SKILL.md frontmatter).
-3. Execute scripts/security_sweep.sh from THIS reviewer skill against the
-   target skill folder. Parse its line-prefixed output.
-4. Do NOT read SKILL.md body or references/ — peer analyzers cover those.
+**A. Body analyst** — reads only `SKILL.md`.
+- **When invoked:** the target SKILL.md path.
+- **Process:** apply J1–J16 from `references/rules.md` (description quality, workflow coherence, scope, progressive disclosure, examples, CKL conventions).
+- **Report:** JSON array `[{severity, rule, path, line, evidence, fix}]`. On read failure, return `{"error": "<reason>"}`. No findings without evidence.
 
-Return a JSON object:
-{
-  "findings": [ { same shape as Body analyst } ],
-  "security_sweep_raw": "<verbatim sweep output>"
-}
+**B. Scripts analyst** — reads only `scripts/*`.
+- **When invoked:** the target scripts/ path.
+- **Process:** apply J17–J20 (shebang, args, usage, PWD), J22–J24 (allowed-tools hygiene if referenced in frontmatter). Execute `scripts/security_sweep.sh` from this reviewer skill against the target.
+- **Report:** JSON `{"findings": [...], "security_sweep_raw": "<verbatim>"}`. Unreadable script → emit a blocker finding (`rule: "structural"`), never silent.
 
-If a script can't be read, surface as a finding (severity: blocker, rule: "structural") rather than failing silently.
-```
+**C. References analyst** — reads only `references/*` + cross-checks SKILL.md mentions.
+- **When invoked:** the target references/ path (may be absent).
+- **Process:** apply J12 (size discipline) and J13 (load conditions stated). Cross-check: every `references/foo.md` must be cited in SKILL.md.
+- **Report:** JSON array (same shape as A). Missing references/ → `{"findings": [], "note": "no references directory — not an error"}`.
 
-#### References analyst (Subagent C)
+### Main agent retains
 
-```
-metadata: { readonly: true, model: fast }
+- `scripts/run_validate.sh` (fast — no dispatch benefit).
+- J25 (Gotchas), J27 (MCP trust boundary), J29 (target's parallel preconditions) — holistic view across all 3 surfaces.
+- Consolidating the 3 JSON responses + validator output into the final report.
+- Composing the chat report + PR payload.
 
-You are a Claude skill references analyst. You verify that every file under
-references/ is well-formed, load-conditioned, and consistent with SKILL.md.
+### Completion gate (one paragraph)
 
-When invoked:
-1. List every file in references/.
-2. For each, apply J12 (size discipline: TOC required if > 300 lines),
-   J13 (SKILL.md must state WHEN to load this file).
-3. Cross-check: every references/foo.md must be mentioned in SKILL.md at
-   least once; if not, flag as suggest (dead reference).
-4. Do NOT read SKILL.md body in full (read only enough to verify reference
-   mentions). Peer analyzers handle SKILL.md and scripts.
-
-Return the same JSON findings array as Body analyst.
-
-If references/ doesn't exist, return {"findings": [], "note": "no references directory — not an error"}.
-```
-
-### Main agent responsibilities (NOT delegated)
-
-- Run `scripts/run_validate.sh` (fast, sequential — no benefit from dispatch)
-- Apply J25 (Gotchas section), J27 (MCP trust boundary docs), J29 (parallel subagent preconditions in the target) — these need holistic view across all three surfaces
-- Consolidate the 3 JSON responses + validator output into the final report
-- Handle completion gate failures (see below)
-- Compose the chat report + PR payload
-
-### Preconditions (dogfood of J29)
-
-When dispatching, state these in the report header — the skill must comply with the rule it enforces:
-
-1. **3 unrelated domains:** body, scripts, references
-2. **No shared state:** each analyzer reads disjoint paths
-3. **Clear file boundaries:** A reads SKILL.md only, B reads scripts/* only, C reads references/* only
-
-### Completion gate
-
-- All 3 must return parseable JSON. If any returns an error or unparseable response, retry ONCE.
-- If retry fails: main agent reads that surface itself (bounded fallback). Report header says *"3-way dispatch with N fallbacks"*. Never silent.
-- Never spin in retry loops. One retry, then fallback.
-
-### When NOT to dispatch
-
-- Small skills (< 200-line SKILL.md, ≤ 4 files total)
-- User explicitly says *"sequential"* or *"sem subagent"*
-- The target being reviewed IS this skill itself (avoid recursive complexity that muddies J29 audit)
+If any analyzer returns unparseable JSON or `{"error": ...}`, retry **once**. On second failure, the main agent reads that surface itself (bounded fallback) and notes it in the report header: *"3-way dispatch with N fallbacks"*. Never silent. Never loop.
 
 ### Report header — always state the execution mode
 
-```
-Execution: sequential
-```
-or
-```
-Execution: 3-way subagent dispatch (Body + Scripts + References) — 0 fallbacks
-```
-
-Never omit. The reader must know whether parallelism ran.
+`Execution: sequential` OR `Execution: 3-way subagent dispatch (Body + Scripts + References) — 0 fallbacks`. Never omit.
 
 ## Workflow (per skill being reviewed)
 
@@ -359,7 +280,7 @@ If the target repo has its own `npm run scan` (snyk-agent-scan or similar) AND t
 
 ### Step 3 — Apply judgment checks (LLM-driven)
 
-Load `references/judgment-checks.md` and walk the checklist. These are the checks that deterministic tools cannot do — quality of description, scope overlap, realism of examples, workflow coherence, CKL conventions beyond what `validate-skills.ts` catches.
+Load `references/rules.md` and walk the checklist (J1–J25, J27, J29 — judgment checks merged with their one-line Why explanations). These are the checks that deterministic tools cannot do — quality of description, scope overlap, realism of examples, workflow coherence, CKL conventions beyond what `validate-skills.ts` catches.
 
 Each finding must include: severity, the specific text/line that triggered it, the rule violated, and a concrete suggested change (not vague advice).
 
@@ -544,23 +465,12 @@ Real failure modes caught during development and use of this skill — including
 
 **When to consult:** load `references/gotchas.md` in Step 3 (judgment) when looking for known patterns to flag in the target skill, AND whenever debugging odd behavior in this skill itself. Update the file when a non-obvious failure mode surfaces — this is the highest-signal section per Anthropic best practices.
 
-## References
-
-Load these on demand — do NOT load all upfront:
-
-- `references/ckl-skill-conventions.md` — load before Step 3 (judgment checks) when reviewing the description, frontmatter, or naming.
-- `references/judgment-checks.md` — load before Step 3 always. Contains the full checklist.
-- `references/ckl-recurring-issues.md` — load in Step 4. Starts empty.
-- `references/gotchas.md` — load in Step 3 (judgment) alongside `judgment-checks.md`. Real failure modes seen in the field; check the target for matching patterns.
-- `references/output-templates.md` — load in Step 5 when composing the report or PR comment draft.
-- `references/rule-explanations.md` — load in Step 5 when composing findings. Contains the plain-language "Why it matters" one-liner for every rule, so PR comments land for both engineers and non-developer skill authors.
-
 ## Scripts
 
 - `scripts/validate_skill.py` — bundled structural validator (Python, no JS deps). Copied from `agent-skills` skill-architect; see "Validator sync caveat" above.
 - `scripts/run_validate.sh <skill-path>` — wrapper that invokes the bundled Python validator. Always works, in any repo.
 - `scripts/security_sweep.sh <skill-path>` — bundled regex security sweep (secrets, eval/exec, rm -rf, network calls, path traversal, unscoped Bash allowlist). Always runs.
-- `scripts/pr_touched_skills.sh <pr-number-or-url>` — uses `gh pr diff --name-only`, filters skill/plugin paths, deduplicates to skill roots. Requires `gh`.
+- `scripts/pr_touched_skills.sh [--checkout] [--force] <pr-number-or-url>` — **layout-agnostic** skill detection. Walks the PR branch's git tree (`gh api .../git/trees/<branch>?recursive=1`) for every `SKILL.md`, then maps each changed file to its longest-matching skill root (the dirname of the nearest ancestor SKILL.md). Works in any repo layout: agent-skills, ckl-ai-skills, single-skill repos, embedded `apps/web/skills/<name>/`, anything. When given a full URL, auto-extracts `OWNER/REPO` and threads `-R` through every `gh` call so cross-repo PRs route correctly. Emits a stderr WARN when the PR's repo doesn't match the local clone (downstream scripts need PR files on disk — switch clones or pass `--checkout`). `--checkout` runs `gh pr checkout` for you; refuses on a dirty tree unless `--force`. Requires `gh`.
 - `scripts/post_pr_review.sh <pr-number> <comments-file> --confirm` — posts **true inline comments** on the PR Files tab + 1 top-level summary via `gh api .../pulls/N/reviews` REST endpoint (NOT `gh pr review`, which collapses everything into one body). Each finding sits on its actual diff line. Refuses to run without explicit `--confirm`.
 
 ## Updating ckl-recurring-issues.md
