@@ -122,14 +122,36 @@ if ! jq -e 'type == "array"' "$COMMENTS_FILE" >/dev/null; then
   exit 2
 fi
 
-# Resolve OWNER/REPO from gh (uses current repo if not set explicitly)
-REPO_INFO="$(gh repo view --json owner,name 2>/tmp/skill-reviewer-repo.err)" || {
-  echo "ERROR: gh repo view failed:" >&2
-  cat /tmp/skill-reviewer-repo.err >&2
-  exit 6
-}
-OWNER="$(echo "$REPO_INFO" | jq -r '.owner.login')"
-REPO="$(echo "$REPO_INFO" | jq -r '.name')"
+# Resolve OWNER/REPO. Prefer `git remote get-url origin` over `gh repo view`
+# because gh's "default repo" can resolve to an upstream tracker when the local
+# clone is a fork — which would post the review to the wrong repo silently.
+# git origin is what the user thinks of as "their" remote, and matches the PR
+# they're reviewing 99% of the time. Fall back to gh repo view if git is absent
+# or the remote URL doesn't parse.
+ORIGIN_URL="$(git -C "$(pwd)" remote get-url origin 2>/dev/null || true)"
+OWNER=""
+REPO=""
+if [[ -n "$ORIGIN_URL" ]]; then
+  # Parse via bash parameter expansion (no ERE regex, which lacks non-greedy quantifiers).
+  # Handles both SSH (git@github.com:OWNER/REPO.git) and HTTPS (https://github.com/OWNER/REPO.git) forms.
+  TRIMMED="${ORIGIN_URL%.git}"   # strip trailing .git
+  TRIMMED="${TRIMMED%/}"          # strip trailing /
+  REPO="${TRIMMED##*/}"           # last path component is REPO
+  REST="${TRIMMED%/$REPO}"        # everything before /REPO
+  OWNER="${REST##*[/:]}"          # last segment before / or :
+fi
+
+if [[ -z "$OWNER" || -z "$REPO" ]]; then
+  REPO_INFO="$(gh repo view --json owner,name 2>/tmp/skill-reviewer-repo.err)" || {
+    echo "ERROR: could not resolve OWNER/REPO from git origin or gh repo view:" >&2
+    cat /tmp/skill-reviewer-repo.err >&2
+    exit 6
+  }
+  OWNER="$(echo "$REPO_INFO" | jq -r '.owner.login')"
+  REPO="$(echo "$REPO_INFO" | jq -r '.name')"
+fi
+
+echo "Target: $OWNER/$REPO PR #$PR_NUMBER" >&2
 
 # Build the inline comments array (entries with path+line)
 INLINE_COMMENTS="$(jq '
