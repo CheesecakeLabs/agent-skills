@@ -43,7 +43,7 @@ This skill is the **maintainer's review buddy** — it handles the mechanical an
 - Working directory must contain at least one `SKILL.md` somewhere in the input path. The skill probes capabilities at runtime (see Step 0) — it does NOT require any specific repo, layout, or tooling beyond basic shell utilities.
 - `bash`, `git`, `python3` (with `pyyaml`) are assumed to exist.
 - **Optional tooling that unlocks more capability when present:**
-  - `tools/validate-skills.ts` in the target repo → enables drift check between bundled validator and upstream (target == `agent-skills` monorepo)
+  - `tools/validate-skills.ts` in the target repo → enables drift check between the Python skill-quality validator and the monorepo's TS implementation (target == `agent-skills` monorepo)
   - `gh` CLI → enables PR fetching and inline comment posting (Modes A and C)
 - The structural validator and security sweep are BUNDLED — they always run, no probe needed.
 - If `gh` is absent, the skill degrades to local-only modes and surfaces what was skipped — never silent.
@@ -75,12 +75,12 @@ Before doing anything, do two things: (a) confirm there's actually a skill in th
    - **PR / branch input:** the diff must touch at least one `SKILL.md` (or files inside a folder that contains one). If `gh pr diff --name-only` returns zero `SKILL.md` references AND zero files under `*/skills/*` paths → refuse: *"This PR doesn't touch any skill. Use `ckl-delivery:pr-review` for generic code review."*. Stop.
    - **Mixed PRs:** if `skill_files / total_files < 0.3` → warn: *"This PR is mostly non-skill code (X% skills, Y% code). I only review the skill portion. Recommend running `ckl-delivery:pr-review` in parallel for the rest. Continue with just the skills?"*. Wait for explicit confirmation.
 
-2. **Detect available tooling (capability probe).** Both the structural validator and the security sweep are bundled inside this skill — they ALWAYS run. The only optional capability is `gh` (for PR operations) and the upstream validator (for drift check):
+2. **Detect available tooling (capability probe).** Both the structural validator and the security sweep are sourced from the shared `skill-quality` substrate (symlinked under `scripts/`) — they ALWAYS run. The only optional capability is `gh` (for PR operations) and the monorepo TS validator (for cross-implementation drift check):
 
    ```bash
    # Capability probes — only for optional steps
    HAS_GH=$(command -v gh >/dev/null 2>&1 && echo "yes" || echo "no")
-   HAS_UPSTREAM_VALIDATOR=$(test -f tools/validate-skills.ts && echo "yes" || echo "no")  # for drift check only
+   HAS_TS_VALIDATOR=$(test -f tools/validate-skills.ts && echo "yes" || echo "no")  # for cross-implementation drift check only
    ```
 
    Record the capability matrix as part of the report header:
@@ -90,7 +90,7 @@ Before doing anything, do two things: (a) confirm there's actually a skill in th
      ✓ Bundled structural validator    → always runs
      ✓ Bundled security sweep          → always runs
      ✓ gh CLI                          → PR operations enabled
-     ✓ Upstream validator at tools/    → drift check enabled (target == agent-skills)
+     ✓ TS validator at tools/          → cross-implementation drift check enabled (target == agent-skills)
    ```
 
    If `gh` is missing, surface: *"gh CLI unavailable — PR fetching and inline posting disabled. Local-only modes still work."*
@@ -229,17 +229,17 @@ If the validator fails to parse the frontmatter (`frontmatter_parse_error`), STO
 - `python3` available (assume yes — same constraint as the skill itself)
 - `pyyaml` recommended (`pip3 install --user pyyaml`); validator has a fallback parser but with lower fidelity. The script prints a one-line WARN if missing — surface that in the report so the user knows.
 
-**Validator sync caveat:**
+**Cross-implementation drift check:**
 
-The bundled validator was copied from `agent-skills` monorepo's `skill-architect`. If that upstream evolves (new checks, fixed bugs), the bundled copy drifts. On any review where the target IS the `agent-skills` repo AND `tools/validate-skills.ts` exists locally, ALSO run the local one and diff the outputs — surface drift as a meta-finding:
+The Python skill-quality validator (`scripts/validate_skill.py`, symlinked to the shared substrate at `packages/skills-catalog/shared/skill-quality/scripts/`) and the monorepo's TS validator (`tools/validate-skills.ts`) implement the same rules in different languages. On any review where the target IS the `agent-skills` repo AND `tools/validate-skills.ts` exists locally, run both and diff the outputs — surface drift as a meta-finding so maintainers can keep the two implementations in sync:
 
 ```bash
 # Only when target == agent-skills monorepo
 if [[ -f tools/validate-skills.ts ]]; then
-  npx tsx tools/validate-skills.ts <skill-path> > /tmp/upstream.txt
-  scripts/run_validate.sh <skill-path> > /tmp/bundled.txt
-  diff /tmp/upstream.txt /tmp/bundled.txt > /tmp/drift.txt || \
-    echo "Validator drift detected — bundled copy is behind upstream. Consider syncing scripts/validate_skill.py."
+  npx tsx tools/validate-skills.ts <skill-path> > /tmp/ts-validator.txt
+  scripts/run_validate.sh <skill-path> > /tmp/py-validator.txt
+  diff /tmp/ts-validator.txt /tmp/py-validator.txt > /tmp/drift.txt || \
+    echo "Validator drift detected — Python and TS implementations disagree. One of them is behind."
 fi
 ```
 
@@ -468,9 +468,9 @@ Real failure modes caught during development and use of skills — including YAM
 
 ## Scripts
 
-- `scripts/validate_skill.py` — bundled structural validator (Python, no JS deps). Copied from `agent-skills` skill-architect; see "Validator sync caveat" above.
-- `scripts/run_validate.sh <skill-path>` — wrapper that invokes the bundled Python validator. Always works, in any repo.
-- `scripts/security_sweep.sh <skill-path>` — bundled regex security sweep (secrets, eval/exec, rm -rf, network calls, path traversal, unscoped Bash allowlist). Always runs.
+- `scripts/validate_skill.py` — Python structural validator (no JS deps). Symlink to the shared substrate at `packages/skills-catalog/shared/skill-quality/scripts/`; kept in lock-step with `skill-architect` automatically. See the cross-implementation drift check above for the TS validator at `tools/validate-skills.ts`.
+- `scripts/run_validate.sh <skill-path>` — local wrapper that invokes the Python validator. Always works, in any repo.
+- `scripts/security_sweep.sh <skill-path>` — regex security sweep (secrets, eval/exec, rm -rf, network calls, path traversal, unscoped Bash allowlist, Unicode Tag smuggling). Symlink to the shared substrate; always runs.
 - `scripts/pr_touched_skills.sh [--checkout] [--force] <pr-number-or-url>` — **layout-agnostic** skill detection. Walks the PR branch's git tree (`gh api .../git/trees/<branch>?recursive=1`) for every `SKILL.md`, then maps each changed file to its longest-matching skill root (the dirname of the nearest ancestor SKILL.md). Works in any repo layout: agent-skills, ckl-ai-skills, single-skill repos, embedded `apps/web/skills/<name>/`, anything. When given a full URL, auto-extracts `OWNER/REPO` and threads `-R` through every `gh` call so cross-repo PRs route correctly. Emits a stderr WARN when the PR's repo doesn't match the local clone (downstream scripts need PR files on disk — switch clones or pass `--checkout`). `--checkout` runs `gh pr checkout` for you; refuses on a dirty tree unless `--force`. Requires `gh`.
 - `scripts/post_pr_review.sh <pr-number> <comments-file> --confirm` — posts **true inline comments** on the PR Files tab + 1 top-level summary via `gh api .../pulls/N/reviews` REST endpoint (NOT `gh pr review`, which collapses everything into one body). Each finding sits on its actual diff line. Refuses to run without explicit `--confirm`.
 
