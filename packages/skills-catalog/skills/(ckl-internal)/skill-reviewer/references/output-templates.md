@@ -28,7 +28,7 @@ Use this verbatim structure. The user reads this top-to-bottom — keep the exec
 
 ### `<skill-path>/SKILL.md`:<line-or-blank>
 **Rule:** <rule_name> *(human source label)*
-**Why it matters:** <one-line plain-language explanation — see references/rule-explanations.md>
+**Why it matters:** <one-line plain-language explanation — see references/rules.md (judgment Why lines) / output-templates.md §Why-line lookup tables (validator + security)>
 **Found:** <exact evidence — quote the offending line or describe the structural issue>
 **Fix:** <concrete replacement, not vague advice. Include before/after example when the fix isn't obvious.>
 
@@ -61,7 +61,7 @@ Use this verbatim structure. The user reads this top-to-bottom — keep the exec
 The `Rule / Why it matters / Found / Fix` shape is calibrated for a mixed audience. CKL skills are increasingly authored by non-developers (product managers, designers experimenting with `skill-architect`), so the comment has to land both for a senior engineer and for someone whose first skill PR this is.
 
 - **Rule** — gives the engineer the rule name to grep and the source label to push back on if needed.
-- **Why it matters** — one plain-language sentence (10–25 words) explaining the consequence in product / human terms, not in jargon. Pulled from `references/rule-explanations.md`. Omit only if the rule name is already self-explanatory (e.g., `description_required`).
+- **Why it matters** — one plain-language sentence (10–25 words) explaining the consequence in product / human terms, not in jargon. Pulled from `references/rules.md (judgment Why lines) / output-templates.md §Why-line lookup tables (validator + security)`. Omit only if the rule name is already self-explanatory (e.g., `description_required`).
 - **Found** — concrete evidence so neither audience has to hunt for what triggered the rule.
 - **Fix** — actionable. When the fix isn't obvious (e.g., J21 YAML quoting, J24 dual-name `allowed-tools`), include a before/after snippet. When it's trivial (e.g., "rename folder"), one sentence is enough.
 
@@ -79,7 +79,7 @@ Always append the source in italics after the rule name. **Use the human-readabl
 |---|---|---|
 | Bundled validator | `*(structural validator)*` | The skill failed an automated structural check (frontmatter shape, file layout, naming). |
 | Bundled security sweep | `*(security scan)*` | A regex pass flagged a security-sensitive pattern (secrets, eval, dangerous rm). |
-| `references/judgment-checks.md` | `*(reviewer judgment — J<N>)*` | Quality / convention rule that needs human-style judgment, codified by CKL maintainers. |
+| `references/rules.md` | `*(reviewer judgment — J<N>)*` | Quality / convention rule that needs human-style judgment, codified by CKL maintainers. |
 | `references/ckl-recurring-issues.md` | `*(recurring CKL pattern — R<N>)*` | A pattern CKL kept catching in real reviews and chose to make permanent. |
 | CKL CONTRIBUTING.md | `*(CKL contribution guide)*` | Convention from the canonical CKL skill contributing doc. |
 
@@ -235,3 +235,65 @@ Do NOT:
 - Hide skipped checks. Always list what was NOT run, with the reason.
 - Write summaries like "Great job!" or "Looks good overall". The report is mechanical — qualitative pats belong to the human reviewer.
 - Round counts. If there's 1 blocker, say 1, not "a few issues".
+
+---
+
+## Why-line lookup tables (for deterministic findings)
+
+When composing a PR comment for a validator-rule or security-sweep finding, copy the matching **Why it matters** sentence verbatim. Judgment-rule Why lines live inline next to each `J<N>` in `references/rules.md`; recurring-rule Why lines live inline next to each `R<N>` in `references/ckl-recurring-issues.md` — do NOT duplicate them here.
+
+**Length guideline:** 10–25 words per line. One sentence. No hedging.
+
+### Structural validator (`scripts/validate_skill.py`)
+
+| Rule name | Why it matters |
+|---|---|
+| `name_required` | Without a `name`, no agent or harness can resolve which skill to invoke when triggers match. |
+| `name_kebab_case` | Kebab-case is the spec convention. Mixed casing breaks slash-command invocation and file-path matching across harnesses. |
+| `name_not_reserved` | The name appears in the file path and in user-facing triggers. Using "claude" or "anthropic" implies official endorsement and conflicts with reserved namespaces. |
+| `name_matches_folder` | The harness assumes the folder name equals the skill's `name` field. A mismatch hides the skill from discovery or loads the wrong one. |
+| `description_required` | Without a description, the agent has nothing to match against the user's request — the skill will never be triggered. |
+| `description_under_1024_chars` | Anthropic's spec hard-caps description at 1024 characters. Past that, the description is truncated server-side and the cut-off section is invisible to matching logic. |
+| `description_no_xml_brackets` | Angle brackets (`<` and `>`) inside the description break the YAML/markdown parser and can be misread as XML tags by downstream tools. |
+| `description_has_use_when` | The `Use when ...` clause tells the agent the specific triggers (user phrases, contexts) that should activate this skill. Without it, matching is guesswork. |
+| `description_has_negative_scope` | Without a `Do NOT use for ...` clause, the agent can't tell which similar skill to delegate to instead — and ends up triggering yours when another would be the correct fit. |
+| `license_required` | Skills get shared and forked. A missing license blocks adoption in compliance-gated repos and creates ambiguity about reuse rights. |
+| `frontmatter_parse_error` | The YAML at the top of the file did not parse. Every downstream check (name, description, license) is meaningless until this is fixed. |
+| `skill_md_under_500_lines` | A SKILL.md over 500 lines loads in full every invocation. Move deep material into `references/` so it loads only when needed (progressive disclosure). |
+| `no_readme_in_skill_folder` | A `README.md` next to `SKILL.md` confuses tooling that scans for the skill entrypoint and bloats the load. SKILL.md should be the only top-level doc. |
+| `references_dir_organization` | `references/` should contain only files referenced from SKILL.md with explicit load conditions. Orphans load nothing and clutter discovery. |
+| `scripts_dir_organization` | Scripts should sit under `scripts/`, named after what they do, invoked relative to the skill root. Other layouts break the harness's allowlist matching. |
+
+### Security sweep (`scripts/security_sweep.sh`)
+
+| Rule name | Why it matters |
+|---|---|
+| `hardcoded_secret` | A literal token, API key, or password in a skill file leaks every time the skill is shared, forked, or pushed to a public repo. |
+| `eval_or_exec_on_dynamic_input` | Running `eval` or `exec` on agent-provided text turns a prompt-injection vulnerability into arbitrary code execution. |
+| `dangerous_rm_rf` | A wide `rm -rf` (especially with variables that may be empty) can wipe the user's working tree, home directory, or worse. |
+| `outbound_network_call` | A skill that reaches the network silently can exfiltrate data the user did not consent to share. Networking should be explicit in the workflow. |
+| `path_traversal` | Unsanitized path components (`../foo`) let a malicious input read or write files outside the intended directory. |
+| `unscoped_bash_allowlist` | `Bash(*)` in `allowed-tools` grants the agent permission to run any shell command without prompting. This defeats the least-authority principle. |
+| `mcp_uuid_hardcoded` | An MCP tool referenced by UUID is bound to one machine's MCP install ID and won't activate on any other dev's laptop. Use the named-server form. |
+| `unicode_tag_smuggling` | A run of invisible Unicode Tag codepoints (U+E0000..U+E007F) carries instructions the LLM reads but a human reviewer cannot see — a documented backdoor technique. |
+| `unicode_tag_present` | A handful of Unicode Tag codepoints is unusual and worth a manual look — emojis do not use this codepoint block, so even sparse counts are suspect. |
+| `excessive_zero_width` | Zero-width characters above the noise floor suggest obfuscation: hidden text or invisible instructions stuffed between visible content. |
+| `long_base64_blob` | A long base64-shaped token inside instructions is a classic obfuscation pattern — usually decoded and piped to a shell, hiding the real payload from review. |
+| `env_var_exfil_same_line` | A credential variable reference on the same line as a network call is the canonical exfiltration shape — the secret leaves the machine immediately. |
+| `env_var_exfil_proximity` | A credential reference within a few lines of a network call is structurally suspicious — even when the link isn't direct, this is the pattern malicious skills use to drain secrets. |
+| `var_in_url_query` | An env var embedded in a URL query string (`?token=$VAR`) leaks the secret to URL logs, browser history, and caches. Pass credentials in headers or request body instead. |
+| `homoglyph_mixed_script` | A word that mixes Latin with Cyrillic or Greek codepoints is a visual spoof. Attackers use this to register near-identical skill names that look trustworthy. |
+| `crypto_cred_reference` | A reference to a wallet mnemonic, private-key env var, exchange API key, or wallet file path has no legitimate place in a typical skill — and CKL developers run skills inside crypto-client repos, where this would be a direct hit. **Conditional severity:** BLOCKER for non-blockchain skills, demoted to SUGGEST when the skill self-declares as blockchain domain. |
+| `eth_private_key_literal` | A literal `0x` + 64 hex chars matches the Ethereum private key format. A skill should never embed a wallet private key inline. |
+| `btc_private_key_literal` | A token matching the Bitcoin WIF format (`[5KL]` + base58, 51–52 chars) has no innocent explanation in a skill file. |
+| `fetch_and_execute` | `curl ... \| sh` pipes remote content into a shell — the skill is running code it has not seen. Classic supply-chain shape. |
+| `silent_dependency_install` | A script that runs `npm i` / `pip install` / `brew install` without explicit user confirmation mutates the environment without consent. |
+| `hardcoded_user_path` | `/Users/<name>/...` or `/home/<name>/...` breaks portability. Use `$HOME`, `~`, or computed paths. |
+| `hardcoded_credential_path` | A hardcoded path under `~/.ssh`, `~/.aws`, `~/.config/gh`, etc. is either a credential leak or an attempt to read someone else's creds. |
+| `stale_model_id` | References to retired Claude families (`claude-2`, `claude-3-*`, `claude-instant`) will fail at runtime once Anthropic removes them. |
+| `persistence_command` | `crontab`, `systemctl enable`, and `launchctl load` install code that re-triggers after the session ends. For a CKL dev whose laptop aggregates multiple client environments, a persistent backdoor compromises every client they touch. |
+| `persistence_write` | Writing to `~/.bashrc`, `~/.zshrc`, `~/.ssh/authorized_keys`, `/etc/cron.*`, or `~/Library/LaunchAgents/` installs persistent code or trust outside the current session. |
+
+### Maintenance
+
+When a new validator or security rule lands, add its Why line here in the same commit. The Why line must always reflect the *current* reason, not the historical one — if a spec changes, update both the rule and its Why line atomically.
