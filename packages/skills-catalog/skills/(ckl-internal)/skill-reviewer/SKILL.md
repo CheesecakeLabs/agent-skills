@@ -21,10 +21,12 @@ allowed-tools:
   - Bash(gh repo view:*)
   - Bash(gh api:*)
   - Bash(git rev-parse:*)
+  - Bash(git remote get-url:*)
   - Bash(git log:*)
   - Bash(git diff:*)
   - Bash(git merge-base:*)
   - Bash(git checkout:*)
+  - Bash(npx tsx tools/validate-skills.ts:*)
 metadata:
   author: Cheesecake Labs
   version: 1.0.0
@@ -387,7 +389,7 @@ Detection:
 ```bash
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
 HOME_REPO="false"
-if echo "$ORIGIN_URL" | grep -qE 'cheesecake-labs[/_-]agent-skills(\.git)?$'; then
+if echo "$ORIGIN_URL" | grep -qiE 'cheesecakelabs/agent-skills(\.git)?$'; then
   HOME_REPO="true"
 fi
 ```
