@@ -56,7 +56,8 @@ Each reference is small and load-pointed; the table below tells you exactly when
 |---|---|
 | `references/ckl-skill-conventions.md` | Step 3 — reviewing description, frontmatter, naming |
 | `references/rules.md` | Step 3 — applying the judgment checklist (merged from former judgment-checks + rule-explanations) |
-| `references/gotchas.md` | Step 3 — alongside rules.md, to check the target for known failure modes |
+| `references/gotchas.md` | Step 3 — alongside rules.md, to check the target for known failure modes (universal substrate) |
+| `references/reviewer-gotchas.md` | When debugging `skill-reviewer` itself — design history, orchestration quirks |
 | `references/ckl-recurring-issues.md` | Step 4 — seeded with R1–R12; append new entries when prompted |
 | `references/output-templates.md` | Step 5 — composing the chat report or PR comment payload |
 
@@ -461,9 +462,9 @@ The disambiguation gate in Step 0 already handles this — refuse with a message
 
 ## Gotchas
 
-Real failure modes caught during development and use of this skill — including YAML `#` truncation, validator drift, security-sweep false positives on its own comments, allowlist path-matching pitfalls, and J17 detection window calibration. See `references/gotchas.md`.
+Real failure modes caught during development and use of skills — including YAML `#` truncation, security-sweep false positives on its own comments, allowlist path-matching pitfalls, J17 detection window calibration, and Unicode Tag smuggling. See `references/gotchas.md` (universal substrate, also consumed by `skill-architect`). Reviewer-specific orchestration history (markdown report removal, stray cleanup scripts) lives in `references/reviewer-gotchas.md`.
 
-**When to consult:** load `references/gotchas.md` in Step 3 (judgment) when looking for known patterns to flag in the target skill, AND whenever debugging odd behavior in this skill itself. Update the file when a non-obvious failure mode surfaces — this is the highest-signal section per Anthropic best practices.
+**When to consult:** load `references/gotchas.md` in Step 3 (judgment) when looking for known patterns to flag in the target skill. Load `references/reviewer-gotchas.md` only when debugging skill-reviewer's own behavior. Update the appropriate file when a non-obvious failure mode surfaces — this is the highest-signal section per Anthropic best practices.
 
 ## Scripts
 
