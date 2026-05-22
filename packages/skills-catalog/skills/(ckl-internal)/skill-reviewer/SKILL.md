@@ -1,6 +1,6 @@
 ---
 name: skill-reviewer
-description: 'Code-review and audit a single Claude Code skill: bundled validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says "review this skill", "audita essa skill", "review the skill PR", "code review do skill", or points at a path containing SKILL.md or a GitHub /pull/N URL. Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'
+description: 'Code-review, audit, and fix a single Claude Code skill: shared-substrate validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says "review this skill", "audita essa skill", "review the skill PR", "code review do skill", "fix this skill", "conserta essa skill", "aplica as correções", "apply the review fixes", or points at a path containing SKILL.md or a GitHub /pull/N URL. Fix-oriented triggers run the same review then offer to apply mechanical fixes through Edit calls (which prompt for permission since Edit is not in allowed-tools). Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'
 license: CC-BY-4.0
 allowed-tools:
   - Read
@@ -371,6 +371,18 @@ Format using `references/output-templates.md`. Always produce:
 **For Mode A PR posting:** compose the JSON payload in memory, pass to `post_pr_review.sh` via stdin (`-` as the file arg + heredoc inside the same bash call). See Mode A step 4 for the exact invocation pattern.
 
 If the user explicitly asks for a saved copy ("salva esse review como md"), they can copy the chat report manually. The skill does not auto-persist.
+
+### Step 6 — Apply fixes (only when the user invoked with a fix-oriented phrase)
+
+If the user invoked the skill with a fix trigger ("fix this skill", "conserta essa skill", "aplica as correções", "apply the review fixes"), follow Steps 1–5 to produce the review first, then offer to apply fixes:
+
+1. **Group the findings** into mechanical (deterministic fix: missing shebangs, unquoted `#` in description, missing `## Gotchas` section scaffolding) and judgment-required (description length, scope overlap, trigger phrase quality, most security findings).
+2. **Offer the mechanical batch first.** *"I can apply N mechanical fixes (list them). Apply?"* — wait for confirmation. On approval, apply each fix through `Edit` calls; each one prompts for permission since `Edit` is not in `allowed-tools` (deliberate — keeps the review-only ergonomics for users who do not ask to fix). Localize the prompt to PT-BR when the chat is in PT-BR.
+3. **For each judgment-required finding, ask individually** before editing. *"Description is X chars over the 1024 budget — want me to suggest a tightened version?"* Show the proposed edit before applying.
+4. **Re-run validate + sweep** after fixes land. Surface the new pass/fail counts so the user sees the delta. If anything regresses, stop and report.
+5. **Do not fix what you did not flag.** The review IS the spec — the fix phase only addresses findings the review surfaced. Unsolicited refactoring is out of scope.
+
+For users who invoked with a review-only phrase ("review this skill"), do NOT offer to fix. The default is review-only; the fix step is opt-in via trigger phrasing.
 
 ## Severity definitions
 
