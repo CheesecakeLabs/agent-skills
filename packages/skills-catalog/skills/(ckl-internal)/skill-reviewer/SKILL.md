@@ -26,7 +26,6 @@ allowed-tools:
   - Bash(git diff:*)
   - Bash(git merge-base:*)
   - Bash(git checkout:*)
-  - Bash(npx tsx tools/validate-skills.ts:*)
 metadata:
   author: Cheesecake Labs
   version: 1.0.0
