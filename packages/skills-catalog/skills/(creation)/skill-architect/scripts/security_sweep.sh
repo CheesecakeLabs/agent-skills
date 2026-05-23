@@ -1,0 +1,1 @@
+../../../../shared/skill-quality/scripts/security_sweep.sh
