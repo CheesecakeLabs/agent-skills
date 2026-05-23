@@ -316,7 +316,7 @@ Before finalizing any skill, verify NONE of these are present:
 - [ ] Shell script missing `set -euo pipefail`
 - [ ] Script positional args used without `usage()` and arity check
 - [ ] Script assumes `pwd` is the skill root (no `dirname "$0"` resolution)
-- [ ] `allowed-tools` grants `Bash(*)` or unscoped `Bash(<base>:*)` when a narrowed pattern exists
+- [ ] `allowed-tools` grants a bare-wildcard `Bash` entry, or an unscoped base-command `Bash` entry (e.g., `Bash` with just `pnpm:*` instead of `Bash` with `pnpm run *`, `pnpm test *`, `pnpm install`)
 
 ### Security Anti-Patterns
 

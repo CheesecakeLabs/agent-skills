@@ -1410,14 +1410,18 @@
       "path": "(creation)/skill-architect",
       "files": [
         "SKILL.md",
+        "references/conventions.md",
         "references/examples.md",
+        "references/gotchas.md",
         "references/patterns.md",
         "references/quality-checklist.md",
+        "references/rules.md",
+        "scripts/security_sweep.sh",
         "scripts/validate_skill.py"
       ],
       "author": "Felipe Rodrigues - github.com/felipfr",
       "version": "1.0.0",
-      "contentHash": "349b256153447631c3ed356996c3a62fec52493d07ba75e37b12c458f9fbf6bb"
+      "contentHash": "c44c16881842c97b911ac9a74ee36ca33322027bc3a3527ea76bd8a1e662bdac"
     },
     {
       "name": "skill-reviewer",

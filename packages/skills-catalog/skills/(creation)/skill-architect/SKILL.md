@@ -289,7 +289,7 @@ allowed-tools:
   - Bash(scripts/your_script.sh:*)
 ```
 
-Avoid `Bash(*)` or unscoped `Bash(<base-cmd>:*)` patterns — they weaken least-authority for zero gain.
+Avoid wildcard `Bash` entries — a bare-wildcard pattern (`Bash` with just `*` inside) or an unscoped base-command pattern (`Bash` with just `<cmd>:*` and no further narrowing) weakens least-authority for zero gain.
 
 ### 3.5 — Parallel Subagent Dispatch (only if the skill uses it)
 
@@ -348,19 +348,22 @@ Consult `references/examples.md` for the full anti-pattern list. The critical on
 
 ## Phase 4: Validate
 
-**Goal:** Verify the skill before delivery.
+**Goal:** Gate on deterministic checks first, then judgment-driven review. Phase 4 is not complete until 4.1 passes — do not advance to Deliver with a failing validator or sweep.
 
-### 4.1 — Structural Validation
+### 4.1 — Deterministic Gate (MUST PASS)
 
-Run the full checklist from `references/quality-checklist.md` and execute
-`scripts/validate_skill.py` against the generated skill to check:
+Run the two shared-substrate scripts against the generated skill. Both ship with this skill as symlinks to `packages/skills-catalog/shared/skill-quality/scripts/`, so they're always available and stay in lock-step with `skill-reviewer`.
 
-- SKILL.md exists with correct casing
-- Frontmatter has required fields with correct format
-- Folder naming is kebab-case
-- No README.md in the skill folder
-- No XML angle brackets in frontmatter
-- Description includes trigger phrases
+```bash
+scripts/validate_skill.py <skill-path>      # structural rules (frontmatter, naming, references hygiene)
+scripts/security_sweep.sh <skill-path>      # secrets, eval/exec, curl|sh, unicode tag smuggling, env-var exfil, persistence, etc.
+```
+
+**Hard gate:** if either fails, go back to Phase 3 and fix the construction defaults. Do not silence findings.
+
+For each failing check, consult the matching rule in `references/rules.md` (the canonical J1–J29 checklist that `skill-reviewer` enforces) for the Why-line and concrete fix. `references/conventions.md` is the CKL-specific source of truth for description quality, frontmatter, and naming conventions. `references/gotchas.md` documents real failure modes observed in the field — load it when a finding surprises you.
+
+If the validator emits a soft warning (`body_line_count`, `body_has_examples`), it does NOT block — but address it during 4.3 unless the warning is genuinely intentional.
 
 ### 4.2 — Trigger Testing
 
@@ -378,7 +381,7 @@ Propose 3-5 test phrases and verify mentally:
 - Tasks handled by other skills
 - Generic questions
 
-If the description is too broad or too narrow, refine it now.
+If the description is too broad or too narrow, refine it now. Use `references/quality-checklist.md` for the 1–5 rubric (specificity, trigger clarity, user language, scope boundaries, pushiness) — target 4+ on all.
 
 ### 4.3 — Instruction Quality Review
 
@@ -389,15 +392,17 @@ Read the skill as if you're an agent encountering it for the first time:
 - Would you know when to stop?
 - Are the examples realistic and complete?
 
+`references/quality-checklist.md` has the matching rubric for instruction quality.
+
 ### 4.4 — Present Findings
 
-Share the validation results with the user. If issues exist, fix them
-before delivery. If everything passes, move to delivery.
+Share the validation results with the user. The script outputs are the source of truth — paste the deterministic gate's summary (e.g., `PASS 27/27` or `0 findings`) plus any judgment-driven observations from 4.2/4.3. If 4.1 was clean and 4.2/4.3 surface only stylistic suggestions, the skill is ready for Delivery.
 
 **Exit criteria for Validate:**
 
-- [ ] Structural validation passes
-- [ ] Trigger phrases tested
+- [ ] `scripts/validate_skill.py` returned PASS (no failures)
+- [ ] `scripts/security_sweep.sh` returned 0 findings
+- [ ] Trigger phrases tested (rubric 4+ on all)
 - [ ] Instructions are unambiguous
 - [ ] User confirms quality
 
