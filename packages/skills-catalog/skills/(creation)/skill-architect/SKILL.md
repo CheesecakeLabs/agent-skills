@@ -196,9 +196,10 @@ metadata:
 
 - name: kebab-case only, no spaces, no capitals
 - name: never use "claude" or "anthropic" (reserved)
-- description: under 1024 characters
+- description: under 1024 characters (target 200–700 — leaves headroom)
 - description: no XML angle brackets (< >)
 - description: must be a single inline line — do NOT use YAML multiline operators (`>`, `|`, `>-`). Write `description: Your text here` all on one line.
+- description: **if the value contains `#`** (e.g., `"PR #42"`, `"channel #engineering"`), wrap the entire value in single quotes — unquoted `#` silently truncates the YAML at the `#` and downstream validators run against a truncated description. Default to single quotes whenever in doubt.
 - license: always `CC-BY-4.0`
 - Delimiters: exactly `---` on their own lines
 
@@ -230,12 +231,14 @@ User says: "..."
 Actions: [numbered steps]
 Result: [specific output]
 
-## Troubleshooting
+## Gotchas
 
-### Error: [message]
+Real failure modes observed in the field. Update this section whenever a non-obvious bug surfaces — Anthropic engineering calls this *"the most valuable content in any skill"*. Leave the section in place even on a brand-new skill (empty placeholder is fine); skip the section only for true throwaways.
 
-Cause: [why]
-Solution: [fix]
+### [Failure mode short name]
+
+What goes wrong: [one-line]
+Fix: [concrete action] or Implication: [what the consumer needs to know]
 ```
 
 **Writing principles:**
@@ -256,7 +259,66 @@ For each file in `references/` or `scripts/`:
 - State the condition under which the agent should load/run it
 - For reference files over 300 lines, include a table of contents
 
-### 3.4 — Anti-Patterns to Avoid
+### 3.4 — Script Defaults (when adding `scripts/`)
+
+When you produce a shell script under `scripts/`, the first lines are fixed — these are the J17 defaults the reviewer enforces, so build them in from the start:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <required-arg>" >&2
+  exit 2
+}
+[[ $# -ne 1 ]] && usage
+```
+
+Don't assume PWD — resolve the skill root from the script's own location:
+
+```bash
+SKILL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+```
+
+For Python scripts, start with `#!/usr/bin/env python3`, include an `if __name__ == "__main__":` guard, and validate args via `argparse` (or check `len(sys.argv)` explicitly).
+
+In SKILL.md's `allowed-tools`, list each script with the narrowest scope:
+
+```yaml
+allowed-tools:
+  - Bash(scripts/your_script.sh:*)
+```
+
+Avoid `Bash(*)` or unscoped `Bash(<base-cmd>:*)` patterns — they weaken least-authority for zero gain.
+
+### 3.5 — Parallel Subagent Dispatch (only if the skill uses it)
+
+If the skill dispatches subagents in parallel via `Task` / `Agent`, the SKILL.md body MUST include a `## Parallel dispatch preconditions` subsection with all four lines below. Without these, parallel dispatch causes race conditions, lost results, or silent data corruption — and the reviewer will block on it (J29):
+
+```markdown
+## Parallel dispatch preconditions
+
+- **Tasks are independent** — no shared state, each subagent reads disjoint paths.
+- **Clear file boundaries** — subagent A reads X only, B reads Y only, etc.
+- **Minimum N tasks justifies parallelism** — acknowledge when sequential is better.
+- **Completion gate** — what happens when not all subagents return usable results (bounded retry, partial-mode honesty, or fail-fast — pick one and state it).
+```
+
+Also list BOTH `Task` and `Agent` in `allowed-tools` — the dispatch tool name varies by harness, and listing only one breaks portability without granting extra capability.
+
+### 3.6 — Security Defaults
+
+Phase 4's `scripts/security_sweep.sh` (symlinked from the shared substrate) scans the produced skill for hardcoded secrets, dangerous `rm -rf`, `curl|sh` patterns, Unicode Tag smuggling, env-var exfiltration shapes (credentials near network calls), persistence side-effects, and crypto-credential literals. Construct skills so none of these appear in the first place:
+
+- Reference credentials by env-var name (`$ANTHROPIC_API_KEY`), never as literals. Never embed a credential in a URL query string — pass it via `-H "Authorization: Bearer $TOKEN"`.
+- Never `curl <url> | sh`. Download to a file, checksum-verify, then execute. Or instruct the user to run the installer interactively.
+- No persistence side-effects (`crontab`, `launchctl load`, writes to `~/.zshrc` / `~/.ssh/authorized_keys`) unless the skill's stated purpose IS persistence.
+- Plain ASCII in description and body — no zero-width characters or Unicode Tag codepoints (U+E0000..U+E007F), which are invisible in editors but readable by the LLM and constitute the canonical prompt-injection smuggling vector.
+- No broad `Read(**/*)` globs paired with outbound network calls — that's the classic data-exfil shape (R10).
+
+If something in the produced skill looks like a false positive of the sweep, document the rationale in `references/gotchas.md` rather than silencing it.
+
+### 3.7 — Anti-Patterns to Avoid
 
 Consult `references/examples.md` for the full anti-pattern list. The critical ones:
 
@@ -271,12 +333,16 @@ Consult `references/examples.md` for the full anti-pattern list. The critical on
 
 **Exit criteria for Craft:**
 
-- [ ] Frontmatter passes all hard rules
+- [ ] Frontmatter passes all hard rules (description quoted if it contains `#`)
 - [ ] Instructions are specific and actionable
 - [ ] Examples included for common scenarios
 - [ ] Error handling documented
 - [ ] Files referenced with clear load conditions
 - [ ] Under 500 lines for SKILL.md body
+- [ ] Every shell script under `scripts/` starts with `#!/usr/bin/env bash` + `set -euo pipefail` and has a `usage()` line
+- [ ] If the skill dispatches subagents in parallel, the four preconditions are stated in the body
+- [ ] `## Gotchas` section present (empty placeholder is acceptable for a brand-new skill)
+- [ ] No literal credentials, no `curl | sh`, no Unicode-Tag codepoints anywhere
 
 ---
 

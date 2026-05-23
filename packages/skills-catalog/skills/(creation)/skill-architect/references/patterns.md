@@ -315,3 +315,22 @@ Most real skills combine patterns. Common combinations:
 When combining, identify the PRIMARY pattern (the one that shapes the
 overall flow) and SECONDARY patterns (the ones that apply within specific
 steps).
+
+---
+
+## 8. Going Parallel (cross-cutting)
+
+Any of the patterns above can dispatch subagents in parallel to split read work
+across independent surface areas — most commonly inside Sequential or Multi-MCP
+flows, when one phase reads several disjoint inputs (body / scripts /
+references; or service A / service B / service C). When you go parallel:
+
+- State the four preconditions in SKILL.md before the dispatch step
+  (independence, clear file boundaries, minimum-N justification, completion
+  gate). See SKILL.md Phase 3.5 for the canonical block to copy in.
+- Default to sequential for small targets. Parallel dispatch has fixed
+  overhead — under ~200 lines of body or ≤4 files, sequential is usually
+  faster wall-clock and always simpler to debug.
+- List BOTH `Task` and `Agent` in `allowed-tools`. The dispatch tool name
+  varies by harness; listing only one breaks cross-harness portability
+  without granting extra capability.
