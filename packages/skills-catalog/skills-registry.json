@@ -57,6 +57,9 @@
       "name": "Web Automation",
       "description": "Skills for browser automation and web testing"
     },
+    "ckl-internal": {
+      "name": "Ckl-internal"
+    },
     "uncategorized": {
       "name": "Uncategorized",
       "description": "Skills without a specific category"
@@ -1415,6 +1418,29 @@
       "author": "Felipe Rodrigues - github.com/felipfr",
       "version": "1.0.0",
       "contentHash": "349b256153447631c3ed356996c3a62fec52493d07ba75e37b12c458f9fbf6bb"
+    },
+    {
+      "name": "skill-reviewer",
+      "description": "'Code-review, audit, and fix a single Claude Code skill: shared-substrate validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says \"review this skill\", \"audita essa skill\", \"review the skill PR\", \"code review do skill\", \"fix this skill\", \"conserta essa skill\", \"aplica as correções\", \"apply the review fixes\", or points at a path containing SKILL.md or a GitHub /pull/N URL. Fix-oriented triggers run the same review then offer to apply mechanical fixes through Edit calls (which prompt for permission since Edit is not in allowed-tools). Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'",
+      "category": "ckl-internal",
+      "path": "(ckl-internal)/skill-reviewer",
+      "files": [
+        "SKILL.md",
+        "references/ckl-recurring-issues.md",
+        "references/conventions.md",
+        "references/gotchas.md",
+        "references/output-templates.md",
+        "references/reviewer-gotchas.md",
+        "references/rules.md",
+        "scripts/post_pr_review.sh",
+        "scripts/pr_touched_skills.sh",
+        "scripts/run_validate.sh",
+        "scripts/security_sweep.sh",
+        "scripts/validate_skill.py"
+      ],
+      "author": "Cheesecake Labs",
+      "version": "1.0.0",
+      "contentHash": "bd34aa4bb3be963165cca83a0ec09dfb6e0899eb8a8ca0d4b0363bb976384b02"
     },
     {
       "name": "social-selling",
