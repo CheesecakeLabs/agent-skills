@@ -1,6 +1,6 @@
 ---
 name: skill-reviewer
-description: 'Code-review, audit, and fix a single Claude Code skill: shared-substrate validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says "review this skill", "audita essa skill", "review the skill PR", "code review do skill", "fix this skill", "conserta essa skill", "aplica as correções", "apply the review fixes", or points at a path containing SKILL.md or a GitHub /pull/N URL. Fix-oriented triggers run the same review then offer to apply mechanical fixes through Edit calls (which prompt for permission since Edit is not in allowed-tools). Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'
+description: 'Code-review, audit, and fix a single Claude Code skill: validator + security sweep + LLM judgment, repo-agnostic. Accepts a local path, PR number/URL, or branch. Use when user says "review this skill", "audita essa skill", "review the skill PR", "code review do skill", "fix this skill", "conserta essa skill", "aplica as correções", "apply the review fixes", or points at a path containing SKILL.md or a GitHub /pull/N URL. Do NOT use for non-skill code review (use ckl-delivery:pr-review), skill creation (use skill-architect), marketplace work (use marketplace-plugin-creator), or batch audits across multiple skills at once.'
 license: CC-BY-4.0
 allowed-tools:
   - Read
