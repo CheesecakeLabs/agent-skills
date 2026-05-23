@@ -15,7 +15,11 @@
 #   pr_touched_skills.sh --checkout <pr-number-or-url>
 #   pr_touched_skills.sh --checkout --force <pr-number-or-url>   # override dirty-tree refusal
 #
-# Output: one absolute path per line (prefixed by REPO_ROOT or pwd)
+# Output: one path per line.
+#   - Same-repo (or --checkout used): absolute path prefixed by REPO_ROOT.
+#   - Cross-repo without --checkout: PR-relative path (no local prefix), so the
+#     caller doesn't mistake a non-existent local path for something downstream
+#     can read. A `CROSS_REPO_NO_FILES_ON_DISK` marker is also printed to stderr.
 # Exit:
 #   0 = found N skills (printed)
 #   1 = no SKILL.md found in the PR's tree, or no skill-related files changed
@@ -131,14 +135,24 @@ fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-# Cross-repo warning: when the PR is from a different repo than the local clone,
-# downstream scripts (validate, security_sweep) need the PR's files to be on disk.
-# Surface the mismatch on stderr so the caller knows to switch clones or use --checkout.
+# Cross-repo detection: when the PR is from a different repo than the local clone,
+# downstream scripts (validate, security_sweep) cannot read PR files from disk.
+# Switch the output format to PR-relative paths so the caller doesn't mistake
+# a CWD-prefixed string for something runnable. --checkout brings the files
+# local, so it keeps the absolute-path output.
 LOCAL_ORIGIN="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
 PR_REPO_SLUG="$OWNER/$REPO"
+CROSS_REPO_NO_FILES_ON_DISK=0
 if [[ -n "$LOCAL_ORIGIN" ]] && ! echo "$LOCAL_ORIGIN" | grep -qiE "[/:]$PR_REPO_SLUG(\.git)?$"; then
-  echo "WARN: PR is in $PR_REPO_SLUG but local clone is $LOCAL_ORIGIN." >&2
-  echo "WARN: downstream scripts need PR files on disk — clone $PR_REPO_SLUG locally or re-run with --checkout." >&2
+  if [[ "$USE_CHECKOUT" -eq 1 ]]; then
+    # User opted into bringing files local — paths are valid here.
+    echo "INFO: --checkout brought $PR_REPO_SLUG's PR $PR_NUMBER into the local clone at $REPO_ROOT." >&2
+  else
+    CROSS_REPO_NO_FILES_ON_DISK=1
+    echo "WARN: PR is in $PR_REPO_SLUG but local clone is $LOCAL_ORIGIN." >&2
+    echo "WARN: emitting PR-relative paths (not local). To run validate/sweep, clone $PR_REPO_SLUG and re-run from there, or pass --checkout to bring this PR into the current clone." >&2
+    echo "CROSS_REPO_NO_FILES_ON_DISK" >&2
+  fi
 fi
 
 # For each changed file, find the LONGEST skill-root prefix in ALL_SKILL_MDS.
@@ -171,10 +185,13 @@ if [[ -z "$TOUCHED" ]]; then
   exit 1
 fi
 
-# Emit absolute paths joined with REPO_ROOT.
+# Emit one path per line. Cross-repo (no --checkout) → PR-relative, so the caller
+# can tell at a glance it isn't pointing at local disk. Otherwise → absolute.
 echo "$TOUCHED" | while IFS= read -r rel; do
   [[ -z "$rel" ]] && continue
-  if [[ "$rel" == "." ]]; then
+  if [[ "$CROSS_REPO_NO_FILES_ON_DISK" -eq 1 ]]; then
+    echo "$rel"
+  elif [[ "$rel" == "." ]]; then
     echo "$REPO_ROOT"
   else
     echo "$REPO_ROOT/$rel"
