@@ -7,20 +7,20 @@ Two output formats: the **chat report** (always) and the **PR comment draft** (o
 Use this verbatim structure. The user reads this top-to-bottom — keep the executive summary tight.
 
 ```markdown
-# Skill Review — <PR #N | path>
+# 🔍 Skill Reviewer — <PR #N | path>
 
-## Executive summary
+<VERDICT-EMOJI> **<PASS | PASS WITH NOTES | BLOCK MERGE>** — `<skill-path>`: <one-line tally>
 
-| Severity | Count |
+| Check | Result |
 |---|---|
+| Structural validator | <✅ X/X | ⚠️ X/Y (Z warn) | ❌ X failed> |
+| Security sweep | <✅ 0 findings | ⚠️ N findings | 🔴 N findings (M blockers)> |
 | 🔴 Blocker | N |
 | 🟡 Must-fix | N |
 | 🔵 Suggest | N |
 | ⚪ Nit | N |
 
-**Verdict:** <PASS | PASS WITH NOTES | BLOCK MERGE>
-**Skills reviewed:** N → list paths
-**Skipped:** <list any skipped check, e.g. "PR features (gh CLI missing)">
+_Skipped: <reason>._  *(only when something was actually skipped — omit the line entirely otherwise; the gates rows already prove what ran)*
 
 ---
 
@@ -67,9 +67,28 @@ The `Rule / Why it matters / Found / Fix` shape is calibrated for a mixed audien
 
 ### Verdict rules
 
-- 1+ blocker → **BLOCK MERGE**
-- 0 blockers, 1+ must-fix → **PASS WITH NOTES** (author must address)
-- 0 blockers, 0 must-fix → **PASS** (suggest/nit don't block)
+| Counts | Verdict | Emoji |
+|---|---|---|
+| 1+ blocker | **BLOCK MERGE** | 🔴 |
+| 0 blockers, 1+ must-fix | **PASS WITH NOTES** (author must address) | 🟡 |
+| 0 blockers, 0 must-fix | **PASS** (suggest/nit don't block) | 🟢 |
+
+The emoji is part of the rendered verdict line — pinning it to the count tier keeps every review visually consistent at the top.
+
+### Gate-cell phrasing
+
+The gates rows are the determinism signal. Phrasing is fixed by check + outcome:
+
+| Check | Outcome | Cell |
+|---|---|---|
+| Structural validator | all passed | `✅ X/X` (e.g. `✅ 27/27`) |
+| Structural validator | partial, with warnings | `⚠️ X/Y (Z warn)` (X passed of Y total, Z soft warnings) |
+| Structural validator | any failed | `❌ X failed` (followed by inline-comment findings on the Files tab) |
+| Security sweep | clean | `✅ 0 findings` |
+| Security sweep | findings, no blockers | `⚠️ N findings` |
+| Security sweep | findings include blockers | `🔴 N findings (M blockers)` |
+
+Always show the counts numerically — re-reviews are easier to scan when the deltas are visible (e.g., `✅ 27/27` → `❌ 2 failed` between runs is unambiguous).
 
 ### Source attribution
 
@@ -92,6 +111,50 @@ Without source attribution, the author can push back legitimately on any finding
 ## PR comment payload (write proactively, post on single confirmation)
 
 The chat report IS the draft. There is no separate "draft" step — write the structured PR payload at the same time the chat report is rendered. The user reads the chat report, says "posta", you post. One confirmation gate, not two.
+
+### PR top-level summary template (canonical)
+
+The summary entry in the PR payload — the one without `path`+`line` that becomes the top-level review body — is always exactly this shape, regardless of skill, regardless of run:
+
+```markdown
+# 🔍 Skill Reviewer
+
+<VERDICT-EMOJI> **<PASS | PASS WITH NOTES | BLOCK MERGE>** — `<skill-path>`: <one-line tally>
+
+| Check | Result |
+|---|---|
+| Structural validator | <✅ X/X | ⚠️ X/Y (Z warn) | ❌ X failed> |
+| Security sweep | <✅ 0 findings | ⚠️ N findings | 🔴 N findings (M blockers)> |
+| 🔴 Blocker | N |
+| 🟡 Must-fix | N |
+| 🔵 Suggest | N |
+| ⚪ Nit | N |
+
+_Skipped: <reason>._
+```
+
+This is the chat report's executive header verbatim — the chat report extends it with per-finding sections below (🔴 Blockers / 🟡 Must-fix / 🔵 Suggest / ⚪ Nit), but the PR summary stops here because per-finding details belong on the Files tab as inline comments.
+
+**Rules:**
+
+- Render the verdict line with the **emoji from the verdict-rules table above** — not the one your chat-report mood suggests.
+- The unified table has **6 rows always**: two gates + four severities. Don't split into two tables.
+- The `_Skipped:_` line is **asymmetric** — render only when something was actually skipped (`gh CLI missing — PR features disabled`, `pyyaml absent — validator fell back to stdlib parser`). When nothing was skipped, omit the line entirely; the gates rows showing ✅ already prove what ran.
+- For **multi-skill reviews** (N > 1, rare for this skill), the verdict line becomes a bullet list — one bullet per skill with its individual tally — and the unified table aggregates across all skills:
+
+  ```markdown
+  <VERDICT-EMOJI> **<verdict>** — <N> skills:
+  - `<path-a>`: 1 blocker, 2 must-fix
+  - `<path-b>`: 0 blockers, 1 must-fix
+  ```
+
+**Intentionally NOT in the summary** (GitHub's review UI already shows them, so duplicating is noise):
+
+- Commit SHA being reviewed (GitHub shows it above every review)
+- Timestamp (GitHub shows it above every review)
+- "See inline comments on the Files tab" prose pointer (GitHub shows the inline count + Files tab natively)
+- Any "Skills reviewed: 1" line when N=1 (the verdict line already names the path)
+- Any positive-vibe section ("Notable strengths") — anti-pattern per the list at the bottom of this file
 
 ### Posting model: 1 top-level summary + N TRUE inline comments
 
@@ -125,7 +188,7 @@ Example payload that the agent composes mentally and then pipes to the script:
     "body": "**🟡 Must-fix** — Rule: `description_has_negative_scope` *(structural validator)*\n\n**Why it matters:** Without a `Do NOT use for` clause, the agent can't tell which similar skill to delegate to instead — and ends up triggering yours when another would be the correct fit.\n\n**Found:** description ends after `Use when ...` with no negative-scope clause.\n\n**Fix:** add a closing sentence like `Do NOT use for X (use peer-skill-name instead).`"
   },
   {
-    "body": "## Skill Reviewer — automated review\n\n**Verdict: BLOCK MERGE** (1 blocker, 1 must-fix)\n\nReviewed: 1 skill. See inline comments on the Files tab for each finding."
+    "body": "# 🔍 Skill Reviewer\n\n🔴 **BLOCK MERGE** — `plugins/foo/skills/bar`: 1 blocker, 1 must-fix\n\n| Check | Result |\n|---|---|\n| Structural validator | ❌ 1 failed |\n| Security sweep | ✅ 0 findings |\n| 🔴 Blocker | 1 |\n| 🟡 Must-fix | 1 |\n| 🔵 Suggest | 0 |\n| ⚪ Nit | 0 |"
   }
 ]
 ```
@@ -232,6 +295,9 @@ Do NOT:
 
 - Use 🎉 ✨ or other positive-vibe emojis. This is a review tool — neutral palette only.
 - Group findings by file before grouping by severity. Severity wins so the human triages fast.
+- Pad the PR summary with commit SHA, timestamp, or "where to look on the Files tab" prose pointers — GitHub's review UI shows that natively above every review. Adding it to the body is noise.
+- Render two separate tables (one for gates, one for severities) in the PR summary — the canonical template fuses them into one 6-row scoreboard. Two adjacent small tables read as over-structure.
+- Improvise the verdict-line emoji per run. The verdict-rules table fixes the mapping: 🔴 BLOCK MERGE, 🟡 PASS WITH NOTES, 🟢 PASS. Pick from there, not from your chat-report mood.
 - Hide skipped checks. Always list what was NOT run, with the reason.
 - Write summaries like "Great job!" or "Looks good overall". The report is mechanical — qualitative pats belong to the human reviewer.
 - Round counts. If there's 1 blocker, say 1, not "a few issues".
