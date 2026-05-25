@@ -27,8 +27,19 @@
 #   3 = gh missing
 #   4 = gh API call failed
 #   5 = --checkout requested but working tree is dirty (use --force to override)
+#
+# State written to disk:
+#   - One `mktemp` temp file for transient `gh` stderr, cleaned on EXIT/INT/TERM via trap.
+#   - `--checkout` runs `gh pr checkout` which creates a local branch in the
+#     current clone. This persists by design — it's an opt-in workflow
+#     convenience (the user can keep working on the PR branch after the
+#     script exits). Not a leak; documented behavior.
 
 set -euo pipefail
+
+# All transient gh stderr writes go through one mktemp file, cleaned on exit.
+GH_ERR="$(mktemp -t skill-reviewer-gh.XXXXXX)"
+trap 'rm -f "$GH_ERR"' EXIT INT TERM
 
 USE_CHECKOUT=0
 FORCE=0
@@ -79,17 +90,17 @@ if [[ "$USE_CHECKOUT" -eq 1 ]]; then
     echo "ERROR: working tree is dirty; refusing --checkout without --force" >&2
     exit 5
   fi
-  if ! gh pr checkout "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} 2>/tmp/skill-reviewer-gh.err; then
+  if ! gh pr checkout "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} 2>"$GH_ERR"; then
     echo "ERROR: gh pr checkout failed:" >&2
-    cat /tmp/skill-reviewer-gh.err >&2
+    cat "$GH_ERR" >&2
     exit 4
   fi
 fi
 
 # Resolve PR head repo + branch for the git/trees query.
-if ! PR_META="$(gh pr view "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} --json headRefName,headRepository,headRepositoryOwner 2>/tmp/skill-reviewer-gh.err)"; then
+if ! PR_META="$(gh pr view "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} --json headRefName,headRepository,headRepositoryOwner 2>"$GH_ERR")"; then
   echo "ERROR: gh pr view failed:" >&2
-  cat /tmp/skill-reviewer-gh.err >&2
+  cat "$GH_ERR" >&2
   exit 4
 fi
 
@@ -103,9 +114,9 @@ if [[ -z "$OWNER" || -z "$REPO" || -z "$BRANCH" ]]; then
 fi
 
 # Fetch the changed file list in the PR.
-if ! CHANGED="$(gh pr diff "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} --name-only 2>/tmp/skill-reviewer-gh.err)"; then
+if ! CHANGED="$(gh pr diff "$PR_NUMBER" ${GH_REPO_FLAG[@]+"${GH_REPO_FLAG[@]}"} --name-only 2>"$GH_ERR")"; then
   echo "ERROR: gh pr diff failed:" >&2
-  cat /tmp/skill-reviewer-gh.err >&2
+  cat "$GH_ERR" >&2
   exit 4
 fi
 
@@ -114,9 +125,9 @@ if [[ -z "$CHANGED" ]]; then
 fi
 
 # Single API call: enumerate all SKILL.md files in the PR's branch tree.
-if ! TREE_RESPONSE="$(gh api "repos/$OWNER/$REPO/git/trees/$BRANCH?recursive=1" 2>/tmp/skill-reviewer-gh.err)"; then
+if ! TREE_RESPONSE="$(gh api "repos/$OWNER/$REPO/git/trees/$BRANCH?recursive=1" 2>"$GH_ERR")"; then
   echo "ERROR: gh api git/trees failed:" >&2
-  cat /tmp/skill-reviewer-gh.err >&2
+  cat "$GH_ERR" >&2
   exit 4
 fi
 

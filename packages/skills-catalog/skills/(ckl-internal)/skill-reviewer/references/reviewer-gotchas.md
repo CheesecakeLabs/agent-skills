@@ -25,6 +25,20 @@ Earlier versions used `run_security_scan.sh` to call snyk-agent-scan. That depen
 
 **Fix:** `rm scripts/run_security_scan.sh` manually. Not blocking — skill ignores the file.
 
+## State the skill writes to disk
+
+What the skill creates on the user's machine, and what cleans it up:
+
+| Source | What | Lifecycle |
+|---|---|---|
+| `scripts/post_pr_review.sh` | `mktemp` temp files (`skill-reviewer-stdin.*`, `skill-reviewer-repo.*`) for stdin payload and `gh` stderr capture | Tracked in a `CLEANUP_FILES` array, removed by a single `trap cleanup EXIT INT TERM` at the top of the script |
+| `scripts/pr_touched_skills.sh` | `mktemp` temp file (`skill-reviewer-gh.*`) for `gh` stderr capture, reused across all 4 `gh` invocations | One file, `trap 'rm -f "$GH_ERR"' EXIT INT TERM` near the top |
+| `scripts/pr_touched_skills.sh --checkout` | A local git branch via `gh pr checkout` | **Persistent by design.** The user opted into `--checkout` because they want the PR branch available for follow-up work. The script does NOT delete it. |
+
+No worktrees are ever created by any script in this skill. No state under `$HOME` (the v1.1.5 `$HOME/.skill-reviewer/reports/` directory was removed in v1.1.6 — see the "Persistent markdown report" gotcha above).
+
+If a future script adds a new temp file, add it to the same `CLEANUP_FILES` tracking pattern (`post_pr_review.sh`) or a single named trap (`pr_touched_skills.sh`). Don't add fixed-path `/tmp/skill-reviewer-*` files — they leak across invocations and race when two reviews run concurrently.
+
 ## Adding to this file
 
 Each entry follows `## <short name>` + prose + `**Fix:**` or `**Implication:**`. Keep entries short. Move an entry to `references/gotchas.md` (the shared substrate) if it generalizes to skill authoring or review beyond `skill-reviewer`'s own orchestration.

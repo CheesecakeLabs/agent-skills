@@ -49,8 +49,22 @@
 #   0 = posted, 2 = usage error, 3 = missing --confirm,
 #   4 = gh missing, 5 = jq missing, 6 = github api failed, 7 = no comments at all,
 #   8 = bad --event value
+#
+# State written to disk:
+#   - All transient temp files use `mktemp` and are tracked in CLEANUP_FILES,
+#     removed on EXIT/INT/TERM via the cleanup trap below. No fixed-path files.
 
 set -euo pipefail
+
+# Track every temp file created so the cleanup trap can remove them on any
+# exit (normal, error, signal). Add new temp paths with CLEANUP_FILES+=("$path").
+CLEANUP_FILES=()
+cleanup() {
+  for f in "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; do
+    [[ -n "$f" ]] && rm -f "$f"
+  done
+}
+trap cleanup EXIT INT TERM
 
 if [[ $# -lt 3 ]]; then
   echo "Usage: $0 <pr-number> <comments-json-file> --confirm [--event=comment|request-changes|approve]" >&2
@@ -105,8 +119,8 @@ if [[ "$COMMENTS_FILE" == "-" ]]; then
   # Read JSON from stdin into a temp file. This lets the caller pipe a heredoc
   # in the same bash command that invokes the script, avoiding a separate
   # Write tool call (and the approval prompt it would trigger).
-  TEMP_INPUT="$(mktemp /tmp/skill-reviewer-stdin.XXXXXX.json)"
-  trap 'rm -f "$TEMP_INPUT"' EXIT INT TERM
+  TEMP_INPUT="$(mktemp -t skill-reviewer-stdin.XXXXXX)"
+  CLEANUP_FILES+=("$TEMP_INPUT")
   cat > "$TEMP_INPUT"
   COMMENTS_FILE="$TEMP_INPUT"
 fi
@@ -142,9 +156,11 @@ if [[ -n "$ORIGIN_URL" ]]; then
 fi
 
 if [[ -z "$OWNER" || -z "$REPO" ]]; then
-  REPO_INFO="$(gh repo view --json owner,name 2>/tmp/skill-reviewer-repo.err)" || {
+  REPO_ERR="$(mktemp -t skill-reviewer-repo.XXXXXX)"
+  CLEANUP_FILES+=("$REPO_ERR")
+  REPO_INFO="$(gh repo view --json owner,name 2>"$REPO_ERR")" || {
     echo "ERROR: could not resolve OWNER/REPO from git origin or gh repo view:" >&2
-    cat /tmp/skill-reviewer-repo.err >&2
+    cat "$REPO_ERR" >&2
     exit 6
   }
   OWNER="$(echo "$REPO_INFO" | jq -r '.owner.login')"
@@ -220,20 +236,22 @@ PAYLOAD="$(jq -n \
   '{event: $event, body: $body, comments: $comments}')"
 
 # POST to the reviews endpoint — this is the call that creates true inline comments
-RESPONSE_FILE="/tmp/skill-reviewer-post.response.json"
+RESPONSE_FILE="$(mktemp -t skill-reviewer-post.XXXXXX)"
+POST_ERR="$(mktemp -t skill-reviewer-post.err.XXXXXX)"
+CLEANUP_FILES+=("$RESPONSE_FILE" "$POST_ERR")
 HTTP_STATUS=0
 
 if ! echo "$PAYLOAD" | gh api \
   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" \
   --method POST \
   --input - \
-  > "$RESPONSE_FILE" 2>/tmp/skill-reviewer-post.err; then
+  > "$RESPONSE_FILE" 2>"$POST_ERR"; then
   HTTP_STATUS=$?
 fi
 
 if [[ "$HTTP_STATUS" -ne 0 ]]; then
   echo "ERROR: GitHub API POST /reviews failed:" >&2
-  cat /tmp/skill-reviewer-post.err >&2
+  cat "$POST_ERR" >&2
   echo "" >&2
   echo "Common causes:" >&2
   echo "  - A finding's path:line wasn't part of the PR diff (GitHub rejects orphan inline comments)." >&2
