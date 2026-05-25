@@ -37,7 +37,17 @@ What the skill creates on the user's machine, and what cleans it up:
 
 No worktrees are ever created by any script in this skill. No state under `$HOME` (the v1.1.5 `$HOME/.skill-reviewer/reports/` directory was removed in v1.1.6 — see the "Persistent markdown report" gotcha above).
 
-If a future script adds a new temp file, add it to the same `CLEANUP_FILES` tracking pattern (`post_pr_review.sh`) or a single named trap (`pr_touched_skills.sh`). Don't add fixed-path `/tmp/skill-reviewer-*` files — they leak across invocations and race when two reviews run concurrently.
+If a future script adds a new temp file, push it onto the `CLEANUP_FILES` array (both scripts now use the same pattern). The shared `cleanup()` function removes everything in the array on `EXIT/INT/TERM`. Don't add fixed-path `/tmp/skill-reviewer-*` files — they leak across invocations and race when two reviews run concurrently.
+
+### Cleanup-failure fallback
+
+Two defensive mechanisms cover the case where the trap can't or didn't run cleanly:
+
+1. **Logging on partial failure.** If `cleanup()` runs but `rm -f` returns non-zero for any file (rare — possible on shared filesystems with ACLs, immutable flags, etc.), the function logs the unremoved paths to stderr plus a copy-paste `rm -f <paths...>` command for manual cleanup. The user always knows where any lingering file is.
+
+2. **Self-healing at next startup.** If the trap doesn't fire at all (SIGKILL, power loss, OOM kill), files linger. The next invocation of either script sweeps `${TMPDIR:-/tmp}` for any `skill-reviewer-*` file older than 1 hour and deletes it. The 1h threshold is comfortably past any realistic single-run duration and avoids racing concurrent invocations.
+
+This pairing handles every realistic failure mode: the trap covers normal exits + Ctrl-C + SIGTERM; the logging covers partial failures within the trap; the self-healing sweep covers trap bypass entirely. Beyond that (e.g., the user's `/tmp` permission changes mid-run), the log message tells them what to do manually.
 
 ## Adding to this file
 

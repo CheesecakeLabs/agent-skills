@@ -58,13 +58,35 @@ set -euo pipefail
 
 # Track every temp file created so the cleanup trap can remove them on any
 # exit (normal, error, signal). Add new temp paths with CLEANUP_FILES+=("$path").
+# If a file resists removal (extremely rare with rm -f, but possible on shared
+# filesystems with ACLs or root-owned reparented files), the trap logs the
+# unremoved paths plus a copy-paste rm command so the user can clean manually.
 CLEANUP_FILES=()
 cleanup() {
+  local -a remaining=()
+  local f
   for f in "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; do
-    [[ -n "$f" ]] && rm -f "$f"
+    [[ -z "$f" ]] && continue
+    if [[ -e "$f" ]] && ! rm -f "$f" 2>/dev/null; then
+      remaining+=("$f")
+    fi
   done
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    {
+      echo ""
+      echo "WARN: skill-reviewer could not auto-clean ${#remaining[@]} temp file(s):"
+      printf '  %s\n' "${remaining[@]}"
+      echo "Clean manually with: rm -f ${remaining[*]}"
+    } >&2
+  fi
 }
 trap cleanup EXIT INT TERM
+
+# Self-healing: if a prior invocation died before trap fired (SIGKILL, power
+# loss, OOM), its temp files linger. Sweep anything older than 1 hour from
+# the same prefix family. 1h is well past any realistic single-run duration
+# and avoids racing concurrent invocations of this script.
+find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'skill-reviewer-*' -mmin +60 -delete 2>/dev/null || true
 
 if [[ $# -lt 3 ]]; then
   echo "Usage: $0 <pr-number> <comments-json-file> --confirm [--event=comment|request-changes|approve]" >&2

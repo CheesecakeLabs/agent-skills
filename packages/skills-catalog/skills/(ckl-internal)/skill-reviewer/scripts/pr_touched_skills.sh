@@ -37,9 +37,37 @@
 
 set -euo pipefail
 
-# All transient gh stderr writes go through one mktemp file, cleaned on exit.
+# Cleanup discipline (mirrors post_pr_review.sh):
+# - Every temp file goes into CLEANUP_FILES; the trap removes them on any exit.
+# - If a file can't be removed, the trap logs the path + a copy-paste rm
+#   command so the user can clean manually.
+# - At startup, sweep any skill-reviewer-* temp files older than 1h from
+#   prior runs that died before their trap fired (SIGKILL, power loss, OOM).
+CLEANUP_FILES=()
+cleanup() {
+  local -a remaining=()
+  local f
+  for f in "${CLEANUP_FILES[@]+"${CLEANUP_FILES[@]}"}"; do
+    [[ -z "$f" ]] && continue
+    if [[ -e "$f" ]] && ! rm -f "$f" 2>/dev/null; then
+      remaining+=("$f")
+    fi
+  done
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    {
+      echo ""
+      echo "WARN: skill-reviewer could not auto-clean ${#remaining[@]} temp file(s):"
+      printf '  %s\n' "${remaining[@]}"
+      echo "Clean manually with: rm -f ${remaining[*]}"
+    } >&2
+  fi
+}
+trap cleanup EXIT INT TERM
+find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'skill-reviewer-*' -mmin +60 -delete 2>/dev/null || true
+
+# Transient gh stderr writes go through one mktemp file.
 GH_ERR="$(mktemp -t skill-reviewer-gh.XXXXXX)"
-trap 'rm -f "$GH_ERR"' EXIT INT TERM
+CLEANUP_FILES+=("$GH_ERR")
 
 USE_CHECKOUT=0
 FORCE=0
