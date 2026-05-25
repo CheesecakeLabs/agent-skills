@@ -1,0 +1,1 @@
+../../../../shared/skill-quality/scripts/validate_skill.py

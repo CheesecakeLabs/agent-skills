@@ -1,0 +1,1 @@
+../../../../shared/skill-quality/rules.md

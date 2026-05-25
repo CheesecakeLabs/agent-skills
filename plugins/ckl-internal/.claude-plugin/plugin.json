@@ -1,0 +1,7 @@
+{
+  "name": "ckl-internal",
+  "description": "Internal CKL skills. Includes skill-reviewer: repo-agnostic code review for SKILL.md files with bundled validator and security sweep.",
+  "author": {
+    "name": "Cheesecake Labs"
+  }
+}

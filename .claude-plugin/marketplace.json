@@ -5,8 +5,8 @@
     "email": "engineering@cheesecakelabs.com"
   },
   "metadata": {
-    "description": "CKL fork of tech-leads-club/agent-skills, organized as Claude-native plugins. Pilot scope: 2 plugins.",
-    "version": "0.0.1",
+    "description": "CKL fork of tech-leads-club/agent-skills, organized as Claude-native plugins.",
+    "version": "0.0.2",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -19,6 +19,11 @@
       "name": "tlc-spec-driven",
       "source": "./plugins/tlc-spec-driven",
       "description": "TLC's 4-phase spec-driven development methodology: spec → design → tasks → execute, with atomic commits and adaptive depth. Standalone plugin for cross-functional adoption."
+    },
+    {
+      "name": "ckl-internal",
+      "source": "./plugins/ckl-internal",
+      "description": "Internal CKL skills. Includes skill-reviewer: repo-agnostic code review for SKILL.md files with bundled validator and security sweep."
     }
   ]
 }

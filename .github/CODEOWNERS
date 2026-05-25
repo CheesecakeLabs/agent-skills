@@ -1,0 +1,10 @@
+# CODEOWNERS — required reviewers for this repository.
+#
+# GitHub auto-requests review from the listed owners on every PR. The
+# "require codeowner approval" branch-protection rule is configured
+# separately in repo settings (added later — this file is the prerequisite).
+#
+# Syntax reference: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Catch-all: every path in the repo.
+* @danilosilvackl @douglasgimli
