@@ -27,6 +27,20 @@ allowed-tools:
   - Bash(git merge-base:*)
   - Bash(git checkout:*)
   - Bash(git status:*)
+  - Bash(git fetch:*)         # Mode D worktree: fetch PR HEAD via `git fetch origin pull/<N>/head`
+  - Bash(git worktree:*)      # Mode D worktree: create/remove/prune detached-HEAD worktrees at the documented prefix
+  # Read-only utilities the agent commonly reaches for during review. Each grants
+  # at most the access the existing Read tool already grants — no new attack surface,
+  # just less prompt churn for legitimate inspection ops.
+  - Bash(echo:*)
+  - Bash(cat:*)
+  - Bash(find:*)
+  - Bash(ls:*)
+  - Bash(grep:*)
+  - Bash(head:*)
+  - Bash(tail:*)
+  - Bash(wc:*)
+  - Bash(jq:*)
 metadata:
   author: Cheesecake Labs
   version: 1.0.0
@@ -107,9 +121,18 @@ Before doing anything, do two things: (a) confirm there's actually a skill in th
 
 Only AFTER Step 0 passes do you pick the operating mode below.
 
-## Three operating modes
+## Operating modes
 
-After the disambiguation gate, detect which mode applies based on user input. Pick the matching script in `scripts/`. All three modes operate on **one skill at a time** — batch / multi-skill audit is intentionally out of scope.
+After the disambiguation gate, detect which mode applies based on user input. Pick the matching script in `scripts/`. All modes operate on **one skill at a time** — batch / multi-skill audit is intentionally out of scope.
+
+| Mode | Trigger | What it does | Touches working tree? |
+|---|---|---|---|
+| A — PR review | PR number / URL | Walks PR via `gh api`; posts inline comments | No (default) |
+| B — Local audit | Folder path | Reviews what's on disk | No |
+| C — Branch review | Branch name | Diff against main; no PR posting | Yes (via `gh pr checkout`) |
+| D — Local worktree | `--worktree` flag with a PR | Checks PR HEAD out as a detached worktree at `${TMPDIR}/skill-reviewer-pr<N>` so validate/sweep can run against PR files | No (the user's current branch is untouched) |
+
+**When to reach for Mode D vs `--checkout`:** Mode D is the recommended path when the user wants to actually run `validate_skill.py` + `security_sweep.sh` against the PR's files. `--checkout` does the same job but mutates the current clone (switches branch, refuses on dirty tree). Mode D's worktree is isolated, persists for the duration of the review, and the next `pr_touched_skills.sh` invocation cleans it up automatically (1h staleness sweep). Use `--checkout` only when the user explicitly says they want to keep working on the PR branch after the review.
 
 ### Mode A — PR review (preferred)
 
@@ -154,6 +177,20 @@ Trigger: user mentions a branch name and says `branch` (e.g., "review skills da 
 1. `gh pr checkout <branch>` (graceful degrade: `git checkout <branch>` if gh is missing).
 2. `git diff main...HEAD --name-only` to find touched skill paths.
 3. Same flow as Mode A but no inline comments at the end (no PR to post to).
+
+### Mode D — Local worktree (recommended when running validate/sweep against PR files)
+
+Trigger: user explicitly says they want validate/sweep against PR files without switching their current branch (e.g., "review PR 42 but don't touch my branch", "audita o PR 42 num worktree"). Same-repo only.
+
+1. Run `scripts/pr_touched_skills.sh --worktree <PR-ref>`. The script does `git fetch origin pull/<N>/head` + `git worktree add --detach $TMPDIR/skill-reviewer-pr<N> FETCH_HEAD`, then emits absolute paths into that worktree.
+2. Pipe those paths directly into `scripts/run_validate.sh` and `scripts/security_sweep.sh` — they read normally.
+3. Follow Mode A's reporting + posting flow from there.
+
+The worktree persists after `pr_touched_skills.sh` exits (downstream validate/sweep needs it). It's cleaned automatically on the next `pr_touched_skills.sh` invocation (the startup sweep removes worktree directories older than 1 hour). The script prints `WORKTREE_AT=<path>` + a manual `git worktree remove --force <path>` command to stderr — surface that in the chat report so the user knows where the files landed and how to clean immediately if they want.
+
+**Cross-repo + `--worktree` is refused** (exit code 7). Fetching from a different repo's URL into the current clone's `.git` is technically possible but adds complexity for marginal benefit; the user can clone the PR's repo and re-run from there.
+
+**Mutually exclusive with `--checkout`** (exit code 6). Pick one path: `--checkout` mutates the current branch, `--worktree` doesn't.
 
 ## What this skill explicitly does NOT do
 
@@ -483,7 +520,12 @@ Real failure modes caught during development and use of skills — including YAM
 - `scripts/validate_skill.py` — Python structural validator (no JS deps). Symlink to the shared substrate at `packages/skills-catalog/shared/skill-quality/scripts/`; kept in lock-step with `skill-architect` automatically. See the cross-implementation drift check above for the TS validator at `tools/validate-skills.ts`.
 - `scripts/run_validate.sh <skill-path>` — local wrapper that invokes the Python validator. Always works, in any repo.
 - `scripts/security_sweep.sh <skill-path>` — regex security sweep (secrets, eval/exec, rm -rf, network calls, path traversal, unscoped Bash allowlist, Unicode Tag smuggling). Symlink to the shared substrate; always runs.
-- `scripts/pr_touched_skills.sh [--checkout] [--force] <pr-number-or-url>` — **layout-agnostic** skill detection. Walks the PR branch's git tree (`gh api .../git/trees/<branch>?recursive=1`) for every `SKILL.md`, then maps each changed file to its longest-matching skill root (the dirname of the nearest ancestor SKILL.md). Works in any repo layout: agent-skills, ckl-ai-skills, single-skill repos, embedded `apps/web/skills/<name>/`, anything. When given a full URL, auto-extracts `OWNER/REPO` and threads `-R` through every `gh` call so cross-repo PRs route correctly. **Cross-repo output discipline:** when the PR is in a different repo than the local clone AND `--checkout` was not used, the script switches stdout to PR-relative paths (no local prefix) and prints `CROSS_REPO_NO_FILES_ON_DISK` to stderr. That signals to the agent that the listed paths are NOT readable locally — do not pipe them into validate/sweep; instead either switch to the PR's repo clone, or re-run with `--checkout`. `--checkout` runs `gh pr checkout` for you (refuses on a dirty tree unless `--force`), brings the PR's files into the current clone, and restores absolute-path output. Requires `gh`.
+- `scripts/pr_touched_skills.sh [--checkout | --worktree] [--force] <pr-number-or-url>` — **layout-agnostic** skill detection. Walks the PR branch's git tree (`gh api .../git/trees/<branch>?recursive=1`) for every `SKILL.md`, then maps each changed file to its longest-matching skill root (the dirname of the nearest ancestor SKILL.md). Works in any repo layout: agent-skills, ckl-ai-skills, single-skill repos, embedded `apps/web/skills/<name>/`, anything. When given a full URL, auto-extracts `OWNER/REPO` and threads `-R` through every `gh` call so cross-repo PRs route correctly. Three opt-in ways to get the PR files on disk for downstream validate/sweep:
+  - `--checkout` runs `gh pr checkout` (refuses on a dirty tree unless `--force`), mutates the current branch, restores absolute-path output. Use when the user wants to keep working on the PR branch after the review.
+  - `--worktree` does `git fetch origin pull/<N>/head` + `git worktree add --detach $TMPDIR/skill-reviewer-pr<N> FETCH_HEAD` (Mode D). Does not touch the current branch. Same-repo only (cross-repo errors with exit 7). Mutually exclusive with `--checkout` (exit 6). Emits absolute paths prefixed by the worktree dir; prints `WORKTREE_AT=<path>` + a `git worktree remove --force ...` cleanup command to stderr. The worktree persists for downstream validate/sweep; next invocation's startup sweep removes anything >1h old.
+  - Default (no flag): no checkout, no worktree. **Cross-repo output discipline:** when the PR is in a different repo than the local clone, the script switches stdout to PR-relative paths (no local prefix) and prints `CROSS_REPO_NO_FILES_ON_DISK` to stderr. Do not pipe those paths into validate/sweep; either switch to the PR's repo clone, or re-run with `--checkout` or `--worktree`.
+
+  Requires `gh`.
 - `scripts/post_pr_review.sh <pr-number> <comments-file> --confirm` — posts **true inline comments** on the PR Files tab + 1 top-level summary via `gh api .../pulls/N/reviews` REST endpoint (NOT `gh pr review`, which collapses everything into one body). Each finding sits on its actual diff line. Refuses to run without explicit `--confirm`.
 
 ## Updating ckl-recurring-issues.md
