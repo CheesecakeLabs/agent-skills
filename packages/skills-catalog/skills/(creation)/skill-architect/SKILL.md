@@ -183,6 +183,8 @@ them, so the agent doesn't load everything upfront.
 
 ```yaml
 ---
+# Allowed fields ONLY: name, description, license, allowed-tools, metadata.
+# Do NOT add triggers:, user-invocable:, keywords:, etc. — see Hard rules below.
 name: kebab-case-name # Must match folder name
 description: [What + When + Not-when, all on this single line]
 license: CC-BY-4.0
@@ -194,11 +196,13 @@ metadata:
 
 **Hard rules:**
 
+- **Frontmatter contains ONLY these fields:** `name`, `description`, `license`, `allowed-tools`, `metadata`. **Do NOT** add `triggers:`, `user-invocable:`, `keywords:`, `tags:`, `category:`, or any other field — those are common LLM hallucinations, NOT in the Anthropic Agent Skills spec. Trigger phrases live INSIDE the `description` value (as user-quoted phrases in the `Use when ...` clause), never as a separate field.
 - name: kebab-case only, no spaces, no capitals
 - name: never use "claude" or "anthropic" (reserved)
-- description: under 1024 characters
+- description: under 1024 characters (target 200–700 — leaves headroom)
 - description: no XML angle brackets (< >)
 - description: must be a single inline line — do NOT use YAML multiline operators (`>`, `|`, `>-`). Write `description: Your text here` all on one line.
+- description: **if the value contains `#`** (e.g., `"PR #42"`, `"channel #engineering"`), wrap the entire value in single quotes — unquoted `#` silently truncates the YAML at the `#` and downstream validators run against a truncated description. Default to single quotes whenever in doubt.
 - license: always `CC-BY-4.0`
 - Delimiters: exactly `---` on their own lines
 
@@ -230,12 +234,14 @@ User says: "..."
 Actions: [numbered steps]
 Result: [specific output]
 
-## Troubleshooting
+## Gotchas
 
-### Error: [message]
+Real failure modes observed in the field. Update this section whenever a non-obvious bug surfaces — Anthropic engineering calls this *"the most valuable content in any skill"*. Leave the section in place even on a brand-new skill (empty placeholder is fine); skip the section only for true throwaways.
 
-Cause: [why]
-Solution: [fix]
+### [Failure mode short name]
+
+What goes wrong: [one-line]
+Fix: [concrete action] or Implication: [what the consumer needs to know]
 ```
 
 **Writing principles:**
@@ -256,7 +262,66 @@ For each file in `references/` or `scripts/`:
 - State the condition under which the agent should load/run it
 - For reference files over 300 lines, include a table of contents
 
-### 3.4 — Anti-Patterns to Avoid
+### 3.4 — Script Defaults (when adding `scripts/`)
+
+When you produce a shell script under `scripts/`, the first lines are fixed — these are the J17 defaults the reviewer enforces, so build them in from the start:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <required-arg>" >&2
+  exit 2
+}
+[[ $# -ne 1 ]] && usage
+```
+
+Don't assume PWD — resolve the skill root from the script's own location:
+
+```bash
+SKILL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+```
+
+For Python scripts, start with `#!/usr/bin/env python3`, include an `if __name__ == "__main__":` guard, and validate args via `argparse` (or check `len(sys.argv)` explicitly).
+
+In SKILL.md's `allowed-tools`, list each script with the narrowest scope:
+
+```yaml
+allowed-tools:
+  - Bash(scripts/your_script.sh:*)
+```
+
+Avoid wildcard `Bash` entries — a bare-wildcard pattern (`Bash` with just `*` inside) or an unscoped base-command pattern (`Bash` with just `<cmd>:*` and no further narrowing) weakens least-authority for zero gain.
+
+### 3.5 — Parallel Subagent Dispatch (only if the skill uses it)
+
+If the skill dispatches subagents in parallel via `Task` / `Agent`, the SKILL.md body MUST include a `## Parallel dispatch preconditions` subsection with all four lines below. Without these, parallel dispatch causes race conditions, lost results, or silent data corruption — and the reviewer will block on it (J29):
+
+```markdown
+## Parallel dispatch preconditions
+
+- **Tasks are independent** — no shared state, each subagent reads disjoint paths.
+- **Clear file boundaries** — subagent A reads X only, B reads Y only, etc.
+- **Minimum N tasks justifies parallelism** — acknowledge when sequential is better.
+- **Completion gate** — what happens when not all subagents return usable results (bounded retry, partial-mode honesty, or fail-fast — pick one and state it).
+```
+
+Also list BOTH `Task` and `Agent` in `allowed-tools` — the dispatch tool name varies by harness, and listing only one breaks portability without granting extra capability.
+
+### 3.6 — Security Defaults
+
+Phase 4's `scripts/security_sweep.sh` (symlinked from the shared substrate) scans the produced skill for hardcoded secrets, dangerous `rm -rf`, `curl|sh` patterns, Unicode Tag smuggling, env-var exfiltration shapes (credentials near network calls), persistence side-effects, and crypto-credential literals. Construct skills so none of these appear in the first place:
+
+- Reference credentials by env-var name (`$ANTHROPIC_API_KEY`), never as literals. Never embed a credential in a URL query string — pass it via `-H "Authorization: Bearer $TOKEN"`.
+- Never `curl <url> | sh`. Download to a file, checksum-verify, then execute. Or instruct the user to run the installer interactively.
+- No persistence side-effects (`crontab`, `launchctl load`, writes to `~/.zshrc` / `~/.ssh/authorized_keys`) unless the skill's stated purpose IS persistence.
+- Plain ASCII in description and body — no zero-width characters or Unicode Tag codepoints (U+E0000..U+E007F), which are invisible in editors but readable by the LLM and constitute the canonical prompt-injection smuggling vector.
+- No broad `Read(**/*)` globs paired with outbound network calls — that's the classic data-exfil shape (R10).
+
+If something in the produced skill looks like a false positive of the sweep, document the rationale in `references/gotchas.md` rather than silencing it.
+
+### 3.7 — Anti-Patterns to Avoid
 
 Consult `references/examples.md` for the full anti-pattern list. The critical ones:
 
@@ -271,30 +336,37 @@ Consult `references/examples.md` for the full anti-pattern list. The critical on
 
 **Exit criteria for Craft:**
 
-- [ ] Frontmatter passes all hard rules
+- [ ] Frontmatter passes all hard rules (description quoted if it contains `#`)
 - [ ] Instructions are specific and actionable
 - [ ] Examples included for common scenarios
 - [ ] Error handling documented
 - [ ] Files referenced with clear load conditions
 - [ ] Under 500 lines for SKILL.md body
+- [ ] Every shell script under `scripts/` starts with `#!/usr/bin/env bash` + `set -euo pipefail` and has a `usage()` line
+- [ ] If the skill dispatches subagents in parallel, the four preconditions are stated in the body
+- [ ] `## Gotchas` section present (empty placeholder is acceptable for a brand-new skill)
+- [ ] No literal credentials, no `curl | sh`, no Unicode-Tag codepoints anywhere
 
 ---
 
 ## Phase 4: Validate
 
-**Goal:** Verify the skill before delivery.
+**Goal:** Gate on deterministic checks first, then judgment-driven review. Phase 4 is not complete until 4.1 passes — do not advance to Deliver with a failing validator or sweep.
 
-### 4.1 — Structural Validation
+### 4.1 — Deterministic Gate (MUST PASS)
 
-Run the full checklist from `references/quality-checklist.md` and execute
-`scripts/validate_skill.py` against the generated skill to check:
+Run the two shared-substrate scripts against the generated skill. Both ship with this skill as symlinks to `packages/skills-catalog/shared/skill-quality/scripts/`, so they're always available and stay in lock-step with `skill-reviewer`.
 
-- SKILL.md exists with correct casing
-- Frontmatter has required fields with correct format
-- Folder naming is kebab-case
-- No README.md in the skill folder
-- No XML angle brackets in frontmatter
-- Description includes trigger phrases
+```bash
+scripts/validate_skill.py <skill-path>      # structural rules (frontmatter, naming, references hygiene)
+scripts/security_sweep.sh <skill-path>      # secrets, eval/exec, curl|sh, unicode tag smuggling, env-var exfil, persistence, etc.
+```
+
+**Hard gate:** if either fails, go back to Phase 3 and fix the construction defaults. Do not silence findings.
+
+For each failing check, consult the matching rule in `references/rules.md` (the canonical J1–J29 checklist that `skill-reviewer` enforces) for the Why-line and concrete fix. `references/conventions.md` is the CKL-specific source of truth for description quality, frontmatter, and naming conventions. `references/gotchas.md` documents real failure modes observed in the field — load it when a finding surprises you.
+
+If the validator emits a soft warning (`body_line_count`, `body_has_examples`), it does NOT block — but address it during 4.3 unless the warning is genuinely intentional.
 
 ### 4.2 — Trigger Testing
 
@@ -312,7 +384,7 @@ Propose 3-5 test phrases and verify mentally:
 - Tasks handled by other skills
 - Generic questions
 
-If the description is too broad or too narrow, refine it now.
+If the description is too broad or too narrow, refine it now. Use `references/quality-checklist.md` for the 1–5 rubric (specificity, trigger clarity, user language, scope boundaries, pushiness) — target 4+ on all.
 
 ### 4.3 — Instruction Quality Review
 
@@ -323,15 +395,17 @@ Read the skill as if you're an agent encountering it for the first time:
 - Would you know when to stop?
 - Are the examples realistic and complete?
 
+`references/quality-checklist.md` has the matching rubric for instruction quality.
+
 ### 4.4 — Present Findings
 
-Share the validation results with the user. If issues exist, fix them
-before delivery. If everything passes, move to delivery.
+Share the validation results with the user. The script outputs are the source of truth — paste the deterministic gate's summary (e.g., `PASS 27/27` or `0 findings`) plus any judgment-driven observations from 4.2/4.3. If 4.1 was clean and 4.2/4.3 surface only stylistic suggestions, the skill is ready for Delivery.
 
 **Exit criteria for Validate:**
 
-- [ ] Structural validation passes
-- [ ] Trigger phrases tested
+- [ ] `scripts/validate_skill.py` returned PASS (no failures)
+- [ ] `scripts/security_sweep.sh` returned 0 findings
+- [ ] Trigger phrases tested (rubric 4+ on all)
 - [ ] Instructions are unambiguous
 - [ ] User confirms quality
 

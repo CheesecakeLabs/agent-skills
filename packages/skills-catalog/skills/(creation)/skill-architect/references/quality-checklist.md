@@ -1,24 +1,13 @@
 # Quality Checklist
 
-Use this checklist at the end of the Validate phase to ensure the skill
-meets all quality criteria before delivery.
+Architect-specific *self-assessment* methodology to use during the Validate phase. This complements (it does not duplicate) the deterministic gates:
+
+- **Structural checks** are now covered by `scripts/validate_skill.py` (symlink to the shared substrate). Phase 4 invokes it deterministically — no need to re-check those items manually.
+- **Audit rules J1–J29** live in `references/rules.md` (symlink). Treat them as a reference when validation surprises you; architect should already be constructing skills that pass them by default.
+
+What this file adds on top: subjective rubrics and trigger-testing methodology that are useful while *building* a skill, before it ever reaches a reviewer.
 
 ---
-
-## Structural Checks (Pass/Fail)
-
-These are hard requirements. Any failure must be fixed.
-
-- [ ] SKILL.md exists with exact casing
-- [ ] YAML frontmatter has opening and closing `---` delimiters
-- [ ] `name` field is present and kebab-case
-- [ ] `name` matches the folder name
-- [ ] `description` field is present
-- [ ] `description` is under 1024 characters
-- [ ] `description` contains no XML angle brackets (< >)
-- [ ] `name` does not contain "claude" or "anthropic"
-- [ ] No README.md inside the skill folder
-- [ ] Folder name is kebab-case (no spaces, no capitals, no underscores)
 
 ## Description Quality (Score 1-5)
 
@@ -66,5 +55,6 @@ Aspirational benchmarks (adapt to your skill):
 ## Final Sign-Off
 
 - [ ] User has reviewed the skill
+- [ ] Validator and security sweep pass (see Phase 4)
 - [ ] Test phrases produce expected behavior
 - [ ] Skill is packaged and ready for upload

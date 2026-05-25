@@ -147,6 +147,65 @@ If you see "Connection refused":
 If something goes wrong, try again.
 ```
 
+### Shell Script Template
+
+```bash
+# ✅ Good — shebang, strict mode, usage line, arg validation, no PWD assumption
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <skill-path>" >&2
+  exit 2
+}
+[[ $# -ne 1 ]] && usage
+
+SKILL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TARGET="$1"
+
+# ... rest of the script
+```
+
+```bash
+# ❌ Bad — no strict mode, no usage, assumes PWD, swallows errors silently
+#!/bin/bash
+cat tools/config.json | jq .key
+```
+
+### Parallel Subagent Dispatch (Preconditions)
+
+```markdown
+# ✅ Good — all four preconditions stated upfront
+
+## Parallel dispatch preconditions
+
+- **Tasks are independent** — no shared state, each subagent reads disjoint paths.
+- **Clear file boundaries** — analyzer A reads `body/` only, B reads `scripts/` only, C reads `references/` only.
+- **Minimum N tasks justifies parallelism** — sequential is fine for small targets (<200 lines, ≤4 files).
+- **Completion gate** — if any subagent returns an error or unparseable response, retry once; on second failure, the main agent reads that surface itself (bounded fallback) and reports `N fallbacks` in the header. Never silent.
+```
+
+```markdown
+# ❌ Bad — parallel dispatch described without preconditions
+
+The skill fans out 3 analyzers in parallel for speed.
+```
+
+Why it fails: no completion gate, no file-boundary statement, no independence assertion. Race conditions, lost results, and silent data corruption become possible. The reviewer blocks on J29.
+
+### Frontmatter Quoting (when value contains `#`)
+
+```yaml
+# ✅ Good — single-quoted so the `#` doesn't truncate the YAML
+description: 'Review skill PRs and inline comments. Use when user says "review the skill PR #42".'
+```
+
+```yaml
+# ❌ Bad — unquoted; YAML parser truncates at the `#`
+description: Review skill PRs and inline comments. Use when user says "review the skill PR #42".
+# The on-disk description ends at "PR " — the trigger phrase " #42" is silently lost.
+```
+
 ### Resource References
 
 ```markdown
@@ -228,6 +287,8 @@ Before finalizing any skill, verify NONE of these are present:
 - [ ] "claude" or "anthropic" in the skill name
 - [ ] Missing --- delimiters around frontmatter
 - [ ] SKILL.md exceeds 500 lines without progressive disclosure
+- [ ] No `## Gotchas` (or equivalent: Common pitfalls / Known issues) section in a mature skill
+- [ ] Frontmatter contains a non-spec field (`triggers:`, `user-invocable:`, `keywords:`, `tags:`, `category:`, etc.) — the only allowed fields are `name`, `description`, `license`, `allowed-tools`, `metadata`. Trigger phrases go INSIDE `description`, not as a separate field.
 
 ### Description Anti-Patterns
 
@@ -236,6 +297,7 @@ Before finalizing any skill, verify NONE of these are present:
 - [ ] Too technical (user perspective missing)
 - [ ] No negative triggers when overlap risk exists
 - [ ] Exceeds 1024 characters
+- [ ] Contains `#` but is not wrapped in quotes (silent YAML truncation)
 
 ### Instruction Anti-Patterns
 
@@ -247,6 +309,25 @@ Before finalizing any skill, verify NONE of these are present:
 - [ ] Wall-of-text instructions without structure
 - [ ] Assumes skill is the only one loaded
 - [ ] Uses prose where a script would be deterministic
+- [ ] Parallel subagent dispatch described without the four preconditions (independence, file boundaries, minimum-N, completion gate)
+
+### Script Anti-Patterns
+
+- [ ] Shell script missing `#!/usr/bin/env bash`
+- [ ] Shell script missing `set -euo pipefail`
+- [ ] Script positional args used without `usage()` and arity check
+- [ ] Script assumes `pwd` is the skill root (no `dirname "$0"` resolution)
+- [ ] `allowed-tools` grants a bare-wildcard `Bash` entry, or an unscoped base-command `Bash` entry (e.g., `Bash` with just `pnpm:*` instead of `Bash` with `pnpm run *`, `pnpm test *`, `pnpm install`)
+
+### Security Anti-Patterns
+
+- [ ] Hardcoded credentials (API keys, tokens, private keys) anywhere
+- [ ] `curl <url> | sh` or `wget <url> | bash` (fetch-and-execute)
+- [ ] Credential env var embedded in URL query string (`?token=$API_KEY`)
+- [ ] Zero-width or Unicode Tag codepoints (U+E0000..U+E007F) in description or body
+- [ ] Silent dependency install (`npm i`, `pip install`, etc.) on skill invocation
+- [ ] Persistence side-effects (crontab, launchctl, shell-rc writes) unless that IS the skill's purpose
+- [ ] Broad `Read(**/*)` glob paired with outbound network calls
 
 ### Quality Anti-Patterns
 
