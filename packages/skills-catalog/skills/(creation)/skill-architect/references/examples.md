@@ -288,6 +288,7 @@ Before finalizing any skill, verify NONE of these are present:
 - [ ] Missing --- delimiters around frontmatter
 - [ ] SKILL.md exceeds 500 lines without progressive disclosure
 - [ ] No `## Gotchas` (or equivalent: Common pitfalls / Known issues) section in a mature skill
+- [ ] Frontmatter contains a non-spec field (`triggers:`, `user-invocable:`, `keywords:`, `tags:`, `category:`, etc.) — the only allowed fields are `name`, `description`, `license`, `allowed-tools`, `metadata`. Trigger phrases go INSIDE `description`, not as a separate field.
 
 ### Description Anti-Patterns
 

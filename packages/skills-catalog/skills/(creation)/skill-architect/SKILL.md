@@ -183,6 +183,8 @@ them, so the agent doesn't load everything upfront.
 
 ```yaml
 ---
+# Allowed fields ONLY: name, description, license, allowed-tools, metadata.
+# Do NOT add triggers:, user-invocable:, keywords:, etc. — see Hard rules below.
 name: kebab-case-name # Must match folder name
 description: [What + When + Not-when, all on this single line]
 license: CC-BY-4.0
@@ -194,6 +196,7 @@ metadata:
 
 **Hard rules:**
 
+- **Frontmatter contains ONLY these fields:** `name`, `description`, `license`, `allowed-tools`, `metadata`. **Do NOT** add `triggers:`, `user-invocable:`, `keywords:`, `tags:`, `category:`, or any other field — those are common LLM hallucinations, NOT in the Anthropic Agent Skills spec. Trigger phrases live INSIDE the `description` value (as user-quoted phrases in the `Use when ...` clause), never as a separate field.
 - name: kebab-case only, no spaces, no capitals
 - name: never use "claude" or "anthropic" (reserved)
 - description: under 1024 characters (target 200–700 — leaves headroom)
