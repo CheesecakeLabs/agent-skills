@@ -5,8 +5,8 @@
     "email": "engineering@cheesecakelabs.com"
   },
   "metadata": {
-    "description": "CKL fork of tech-leads-club/agent-skills, organized as Claude-native plugins. Pilot scope: 2 plugins.",
-    "version": "0.0.1",
+    "description": "CKL fork of tech-leads-club/agent-skills, organized as Claude-native plugins.",
+    "version": "0.0.2",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -23,7 +23,7 @@
     {
       "name": "ckl-internal",
       "source": "./plugins/ckl-internal",
-      "description": "ckl-internal skill from the CKL agent-skills catalog."
+      "description": "Internal CKL skills. Includes skill-reviewer: repo-agnostic code review for SKILL.md files with bundled validator and security sweep."
     }
   ]
 }
